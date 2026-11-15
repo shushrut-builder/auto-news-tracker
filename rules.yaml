@@ -1,5 +1,5 @@
 # Daily Automotive Sales Signals: sources, keywords and thresholds.
-# Maintainers only. config.yaml holds the team settings (recipients, time, watchlist).
+# Maintainers only. config.yaml holds the team settings (recipients, time, contact, regions).
 #
 # sources: tier 1 = official/press releases, 2 = trade press, 3 = general news/aggregators.
 #          auto_only: true skips the "must look automotive" keyword check (the feed is all automotive).
