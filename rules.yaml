@@ -345,6 +345,10 @@ prefilter:
   - '^(watch|video|photos?|gallery)\b'
   - 'information collection activities|sunshine act|performance review board|privacy act of 1974|meeting notice|\| daily dealer live|\blive:'
   - '\bspied\b|\bspotted\b|spy shots?|leaked images|\bteased\b|\bteaser\b|\bviral\b|tiktok|youtuber|repair bill|\b(man|woman|owner|driver) (buys|bought|finds|discovers|sues|spends)\b'
+  - '\b\d+\s+(\w+\s+){0,3}(car|cars|suv|suvs|ev|evs|model|models)\s+(and\s+\w+\s+)?launch(es)?\b|\blaunches:\s|\bupcoming (cars|suvs|launches)\b'
+  - '\?\s*$'
+  - '\b(scooters?|motorcycles?|motorbikes?|two-wheelers?|e-bikes?|bikes?)\b'
+  - '\bpatent(s|ed)?\b'
   include:
   - 'dealer|dealership|dealer group|auto group|automotive group|showroom|rooftop'
   - 'automaker|carmaker|\boem\b|auto ?maker|automotive|auto industry|auto sector|car market|vehicle market'
@@ -526,14 +530,15 @@ settings:
   max_lookback_hours: 72
   title_similarity: 0.75
   sent_memory_days: 14
-  confidence_gate: 0.7
+  confidence_gate: 0.7          # New accounts, and the Risk / Growth label on existing accounts
+  watchlist_confidence_gate: 0.5  # below this, even watchlist news is left out
+  max_per_outlet: 2             # at most this many items from one publication per email
   priority:
     min_signals: 2
     window_days: 30
   caps:
-    new_business: 5
-    industry_development: 3
-    lower_priority: 3
+    existing_accounts: 10
+    new_accounts: 6
   retry_hours: 3
   ai:
     model: claude-haiku-5-5

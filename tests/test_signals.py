@@ -277,27 +277,74 @@ def test_routing_reports_matched_name():
 
 # ---------------------------------------------------------------- ranking
 
-def _cand(section, conf, companies=(), tier=2):
-    st = _item(f"story {conf} {section} {companies}", f"https://x.com/{section}{conf}{companies}", tier=tier)
+def _cand(section, conf, companies=(), tier=2, matched=None, host="x.com"):
+    st = _item(f"story {conf} {section} {companies}", f"https://{host}/{section}{conf}{companies}", tier=tier)
     st["outlets"] = 1
-    return {"story": st, "tag": tag(confidence=conf, companies=[{"name": c, "role": "subject"} for c in companies]), "section": section, "matched": None}
+    return {"story": st, "tag": tag(confidence=conf, companies=[{"name": c, "role": "subject"} for c in companies]),
+            "section": section, "matched": matched}
 
 
-def test_confidence_gate_and_caps():
-    out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9)], RULES, [])
-    assert len(out["new_business"]) == 1 and len(out["industry_development"]) == 1
-    many = [_cand("new_business", 0.9 - i / 100) for i in range(8)] + [_cand("potential_risk", 0.9 - i / 100) for i in range(9)]
-    out = S.rank(many, RULES, [])
-    assert len(out["new_business"]) == 5 and len(out["potential_risk"]) == 9
+def test_two_sections_gates_and_caps():
+    out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9, host="a.com"),
+                  _cand("industry_development", 0.95, host="b.com")], RULES, [])
+    # Low confidence and background stories are left out; only prospects go to New accounts.
+    assert len(out["new_accounts"]) == 1 and out["existing_accounts"] == []
+    # Watchlist stories go to Existing accounts with a Risk / Growth label when confident.
+    out = S.rank([_cand("potential_risk", 0.9, matched="AutoNation"), _cand("potential_growth", 0.6, matched="Kia", host="a.com"),
+                  _cand("industry_development", 0.8, matched="Toyota", host="b.com"), _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES, [])
+    labels = [(c["matched"], c["label"]) for c in out["existing_accounts"]]
+    assert labels == [("AutoNation", "Risk"), ("Toyota", None), ("Kia", None)]  # Ford below the watchlist gate
+    many = [_cand("new_business", 0.9 - i / 100, host=f"h{i}.com") for i in range(9)]
+    assert len(S.rank(many, RULES, [])["new_accounts"]) == 6
 
 
-def test_priority_for_companies_not_brands():
+def test_at_most_two_items_per_outlet():
+    same = [_cand("new_business", 0.9 - i / 100, host="theedgemalaysia.com") for i in range(5)]
+    assert len(S.rank(same, RULES, [])["new_accounts"]) == 2
+
+
+def test_priority_needs_an_earlier_email_and_skips_brands():
     history = [{"company": "busy", "key": "https://old.com/1", "at": "2026-11-10T00:00:00+00:00"},
                {"company": "toyota", "key": "https://old.com/2", "at": "2026-11-10T00:00:00+00:00"}]
-    out = S.rank([_cand("new_business", 0.8, ["Busy Group"]), _cand("new_business", 0.95, ["Toyota"])], RULES, history)
-    first = out["new_business"][0]
+    out = S.rank([_cand("new_business", 0.8, ["Busy Group"]), _cand("new_business", 0.95, ["Toyota"], host="a.com")], RULES, history)
+    first = out["new_accounts"][0]
     assert first["priority"] and first["tag"]["companies"][0]["name"] == "Busy Group"
-    assert not out["new_business"][1]["priority"]
+    assert not out["new_accounts"][1]["priority"]
+    # Two stories about the same company today, with no earlier email, is not Priority.
+    out = S.rank([_cand("new_business", 0.8, ["Proton"]), _cand("new_business", 0.9, ["Proton"], host="a.com")], RULES, [])
+    assert not any(c["priority"] for c in out["new_accounts"])
+
+
+def test_passing_mention_is_not_a_watchlist_match():
+    t_ = tag(signal="acquisition", companies=[{"name": "Maroone Group", "role": "acquirer"}, {"name": "AutoNation", "role": "other"}])
+    assert S.route(t_, CTX_WATCH, RULES) == ("new_business", None)
+
+
+def test_regions():
+    abroad = dict(region="Asia Pacific")
+    # Prospects and watched-brand news outside the team's regions are left out...
+    assert S.route(tag(signal="acquisition", companies=[{"name": "Sime Darby", "role": "acquirer"}], **abroad), CTX_WATCH, RULES, ["North America"]) is None
+    assert S.route(tag(signal="launch", brands=["Kia"], **abroad), CTX_WATCH, RULES, ["North America"]) is None
+    # ...but a watched company is an account wherever the news happens, and competitor incidents always count.
+    assert S.route(tag(signal="acquisition", companies=[{"name": "AutoNation", "role": "target"}], **abroad), CTX_WATCH, RULES, ["North America"]) == ("potential_risk", "AutoNation")
+    assert S.route(tag(signal="competitor_incident", companies=[{"name": "CDK Global", "role": "subject"}], **abroad), CTX_WATCH, RULES, ["North America"])
+    # In region, Global, Unknown or no regions configured: normal routing.
+    for r in ("North America", "Global", "Unknown"):
+        assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], region=r), CTX_WATCH, RULES, ["North America"])
+    assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], **abroad), CTX_WATCH, RULES, [])
+
+
+def test_oem_moving_away_from_dealers_is_a_risk():
+    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"], direction="falling"), CTX_WATCH, RULES)[0] == "potential_risk"
+    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"], direction="rising"), CTX_WATCH, RULES)[0] == "potential_growth"
+
+
+def test_url_date_older_than_reported_date():
+    now = dt.datetime(2026, 11, 15, tzinfo=dt.timezone.utc)
+    assert S.url_date_is_older("https://site.com/2023/05/14/autonation-plan", now)
+    assert S.url_date_is_older("https://site.com/news/2024-02-01-story", now)
+    assert not S.url_date_is_older("https://site.com/2026/11/14/story", now)
+    assert not S.url_date_is_older("https://www.floridatrend.com/article/26128/x", now)
 
 
 # ---------------------------------------------------------------- AI fallback
@@ -396,7 +443,7 @@ def test_preview_sends_nothing_and_writes_files(tmp_path):
     assert box.attempts == 0
     html_out = (tmp_path / "out" / "preview.html").read_text(encoding="utf-8")
     text_out = (tmp_path / "out" / "preview.txt").read_text(encoding="utf-8")
-    assert "Good morning," in html_out and text_out.startswith("Subject: Automotive market summary – ")
+    assert "Good morning," in html_out and text_out.startswith("Subject: Automotive sales signals – ")
     assert not (tmp_path / "sent.json").exists()  # previews don't touch state
 
 
@@ -411,8 +458,9 @@ def test_email_format(tmp_path):
     box = Outbox()
     _run(tmp_path, _at_local(8), box, watchlist=False)
     mail = box.sent[0]
-    assert mail["subject"].startswith("Automotive market summary – ")
-    assert "Potential risk" not in mail["html"] and "Potential growth" not in mail["html"]  # no watchlist
+    assert mail["subject"].startswith("Automotive sales signals – ")
+    assert "Existing accounts" not in mail["html"]  # no watchlist, so no existing-accounts section
+    assert "Reply to this email" in mail["text"]
     assert " should " not in mail["text"].lower()
     import re
     urls = re.findall(r"\(([^:()]+): (https?://\S+)\)", mail["text"])

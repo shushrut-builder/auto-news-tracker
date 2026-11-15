@@ -37,15 +37,16 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 USER_AGENT = "auto-sales-signals/1.0"
 
-SECTIONS = ["potential_risk", "potential_growth", "new_business", "industry_development", "lower_priority"]
-SECTION_TITLES = {
-    "potential_risk": "Potential risk",
-    "potential_growth": "Potential growth",
-    "new_business": "New business",
-    "industry_development": "Industry development",
-    "lower_priority": "Lower priority",
-}
-ACTION_SECTIONS = {"potential_risk", "potential_growth", "new_business"}
+# The email has two sections. Routing (ROUTING below) still decides risk / growth / new business per story;
+# rank() turns that into: watchlist news -> Existing accounts (labelled Risk or Growth), prospects -> New accounts.
+SECTIONS = ["existing_accounts", "new_accounts"]
+SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts"}
+LABELS = {"potential_risk": "Risk", "potential_growth": "Growth"}
+# Regions a team can cover (config.yaml `regions`). The AI tags each story with one of these, or Global / Unknown.
+REGIONS = ["North America", "Europe", "India", "Middle East", "Asia Pacific", "Latin America", "Africa"]
+STORY_REGIONS = REGIONS + ["Global", "Unknown"]
+REGION_HINTS = {"North America": "the United States or Canada", "Europe": "Europe or the UK", "India": "India",
+                "Middle East": "the Middle East", "Asia Pacific": "Asia Pacific", "Latin America": "Latin America", "Africa": "Africa"}
 SIGNALS = [
     "acquisition", "closure", "new_store", "market_entry", "competitor_selected", "leadership_change", "tech_investment",
     "oem_dms_certification", "oem_retail_strategy", "major_recall", "sales_shift", "launch",
@@ -103,7 +104,15 @@ def load_config(path: Path) -> dict:
         ZoneInfo(tz)
     except (ZoneInfoNotFoundError, ValueError):
         raise ConfigError(f"{path.name}: unknown timezone {tz!r} (use names like America/Chicago or Asia/Kolkata)")
-    return {"recipients": [str(r) for r in recipients], "send_hour": hour, "timezone": tz, "watchlist": parse_watchlist(cfg.get("watchlist"))}
+    regions = cfg.get("regions") or []
+    if isinstance(regions, str):
+        regions = [regions]
+    by_lower = {r.lower(): r for r in REGIONS}
+    unknown = [r for r in regions if str(r).strip().lower() not in by_lower]
+    if unknown:
+        raise ConfigError(f"{path.name}: unknown region(s) {', '.join(map(str, unknown))} (use: {', '.join(REGIONS)})")
+    return {"recipients": [str(r) for r in recipients], "send_hour": hour, "timezone": tz, "watchlist": parse_watchlist(cfg.get("watchlist")),
+            "regions": [by_lower[str(r).strip().lower()] for r in regions]}
 
 
 def load_rules(path: Path) -> dict:
@@ -304,6 +313,21 @@ def exa_search(source: dict, since: dt.datetime, settings: dict, key: str) -> di
     raise last  # type: ignore[misc]
 
 
+URL_DATE = re.compile(r"/(20\d{2})[/-](\d{1,2})(?:[/-](\d{1,2}))?(?=[/-])")
+
+
+def url_date_is_older(url: str, published: dt.datetime, slack_days: int = 7) -> bool:
+    """True when the URL carries a date (/2023/05/ or /2023-05-14-) well before the reported publish date."""
+    m = URL_DATE.search(urlsplit(url).path + "/")
+    if not m:
+        return False
+    try:
+        d = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3) or 28))
+    except ValueError:
+        return False
+    return d < published.date() - dt.timedelta(days=slack_days)
+
+
 def parse_exa(data: dict, source: dict) -> list[dict]:
     results = data.get("results") if isinstance(data, dict) else None
     if not isinstance(results, list):
@@ -319,6 +343,8 @@ def parse_exa(data: dict, source: dict) -> list[dict]:
             continue
         if when.tzinfo is None:
             when = when.replace(tzinfo=dt.timezone.utc)
+        if url_date_is_older(url, when):
+            continue  # Exa sometimes reports a recent date for an old page; the URL says otherwise
         host = urlsplit(url).hostname or source["name"]
         snippet = " ".join(r.get("highlights") or []) or r.get("summary") or (r.get("text") or "")[:600]
         out.append({
@@ -543,14 +569,14 @@ def classify_rules(story: dict, ctx: RulesContext) -> dict:
     if summary and summary[-1] not in ".!?":
         summary += "."
     return {"relevant": signal is not None, "signal": signal, "companies": companies, "brands": brand_hits[:5], "direction": direction,
-            "summary": summary, "implication": implication, "confidence": confidence, "tagged_by": "rules"}
+            "summary": summary, "implication": implication, "confidence": confidence, "region": "Unknown", "outlet": "", "tagged_by": "rules"}
 
 
 # ---------------------------------------------------------------- classify: AI (optional)
 
 SIGNAL_DEFS = """Company signals (about a specific dealer group, dealer, distributor or OEM):
 - acquisition: a company buys, merges with, or is bought by another (dealerships, stores, groups). Give roles: acquirer and target.
-- closure: a store/dealership closes, a franchise is lost or terminated, a group goes bankrupt.
+- closure: a store/dealership closes, a franchise is lost or terminated, a group goes bankrupt, or a company announces a restructuring, layoffs or cost cuts.
 - new_store: a new dealership, showroom or store opens or breaks ground.
 - market_entry: a brand or company enters a new country/market, or appoints a distributor/importer.
 - competitor_selected: a dealer or group selects, signs with, or rolls out a competing dealer software provider (listed below).
@@ -558,7 +584,7 @@ SIGNAL_DEFS = """Company signals (about a specific dealer group, dealer, distrib
 - tech_investment: a dealer, group or OEM invests in retail technology, digital retail, AI, software or IT modernisation.
 Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - oem_dms_certification: an OEM certifies or approves a dealer management system (DMS) vendor for its dealers. Mark the certified vendor with role "certified".
-- oem_retail_strategy: an OEM changes how its vehicles are sold (agency model, direct sales, dealer network changes, dealer standards).
+- oem_retail_strategy: an OEM changes how its vehicles are sold (agency model, direct sales, dealer network changes, dealer standards). Set direction: "falling" if the change reduces the role or number of dealers (direct sales, agency model, network cuts), "rising" if it expands it.
 - major_recall: a large vehicle recall.
 - sales_shift: a notable rise or fall in a brand's or market's vehicle sales, registrations or market share. Set direction.
 - launch: a new model or EV launch, or a launch date announced.
@@ -580,15 +606,19 @@ For each item, decide whether it is relevant to B2B automotive retail (dealers, 
 Signals (choose exactly one for relevant items, the best fit):
 {SIGNAL_DEFS}
 
-Company roles: acquirer, target (the one being bought or getting new owners), certified, subject (the company the news is about), other.
+Company roles: acquirer, target (the one being bought or getting new owners), certified, subject (the company the news is about), other (named, but the news is not about it, e.g. mentioned as background or history).
 
 Rules:
 - Extract only companies and brands that are named in the title or snippet. Use the name as written. Never infer or add names.
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one plain sentence of at most 35 words. No opinion, no implication.
-- implication: what this kind of event typically means for a company selling dealer software, in one sentence of at most 25 words. Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
+- implication: what this specific event means for the companies involved, in one sentence of at most 25 words. Make it concrete to this story (name the company or the change); do not write a generic line that would fit any story of this type, and do not repeat the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Do not end with a generic mention of dealer management software. Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
 - confidence: 0 to 1, your confidence that the signal, companies and roles are correct given only the text. Use below 0.6 when the text is thin or ambiguous.
-- direction: "rising" or "falling" for sales_shift, otherwise null.
+- direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
+- region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
+- english: false if the title or snippet is not in English.
+- current: false if the item is not news from the past few days relative to "today" (an old article, an anniversary piece, an evergreen feature or cover story, or a recap of past events). The publishedAt date can be wrong; judge from the text too.
+- outlet: the publication's usual name (for example "The Edge Malaysia" for theedgemalaysia.com, "Automotive News" for autonews.com). If unsure, repeat the publisher given.
 - Return one result per input item, with the same id."""
 
 
@@ -596,7 +626,8 @@ OUTPUT_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["results"],
     "properties": {"results": {"type": "array", "items": {
         "type": "object", "additionalProperties": False,
-        "required": ["id", "relevant", "signal", "companies", "brands", "direction", "summary", "implication", "confidence"],
+        "required": ["id", "relevant", "signal", "companies", "brands", "direction", "summary", "implication", "confidence",
+                     "region", "english", "current", "outlet"],
         "properties": {
             "id": {"type": "string"},
             "relevant": {"type": "boolean"},
@@ -608,6 +639,10 @@ OUTPUT_SCHEMA = {
             "summary": {"type": "string"},
             "implication": {"type": "string"},
             "confidence": {"type": "number"},
+            "region": {"type": "string", "enum": STORY_REGIONS},
+            "english": {"type": "boolean"},
+            "current": {"type": "boolean"},
+            "outlet": {"type": "string"},
         }}}},
 }
 FORBIDDEN = re.compile(r"\b(should|reach out|contact|opportunity to)\b", re.I)
@@ -635,7 +670,7 @@ def ai_tag_batch(client, rules: dict, batch: list[dict]) -> tuple[dict, list[str
             max_tokens=ai["max_tokens"],
             output_config={"effort": ai["effort"], "format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
             system=[{"type": "text", "text": system_prompt(rules), "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": json.dumps(payload)}],
+            messages=[{"role": "user", "content": json.dumps({"today": dt.datetime.now(dt.timezone.utc).date().isoformat(), "items": payload})}],
         )
     except anthropic.RateLimitError as e:
         raise BatchFailed(f"rate limited: {e}")
@@ -663,15 +698,18 @@ def ai_tag_batch(client, rules: dict, batch: list[dict]) -> tuple[dict, list[str
         if not ok or not all(name_in_text(n, src) for n in names):
             rejected.append(s["id"])  # a name the article doesn't contain: fall back to rules
             continue
+        usable = bool(r["relevant"]) and r["signal"] is not None and r.get("english", True) is not False and r.get("current", True) is not False
         tags[s["id"]] = {
-            "relevant": bool(r["relevant"]) and r["signal"] is not None,
-            "signal": r["signal"] if r["relevant"] else None,
+            "relevant": usable,
+            "signal": r["signal"] if usable else None,
             "companies": [{"name": c["name"], "role": c["role"] if c.get("role") in ROLES else "subject"} for c in r["companies"]],
             "brands": list(r.get("brands", [])),
-            "direction": (r.get("direction") or "rising") if r["signal"] == "sales_shift" else None,
+            "direction": (r.get("direction") or "rising") if r["signal"] in ("sales_shift", "oem_retail_strategy") else None,
             "summary": r.get("summary", "").strip(),
             "implication": "" if FORBIDDEN.search(r.get("implication", "")) else r.get("implication", "").strip(),
             "confidence": max(0.0, min(1.0, float(r["confidence"]))),
+            "region": r.get("region") if r.get("region") in STORY_REGIONS else "Unknown",
+            "outlet": (r.get("outlet") or "").strip(),
             "tagged_by": "ai",
         }
         del by_id[s["id"]]
@@ -760,6 +798,11 @@ def _sales(ctx):
     return "potential_risk" if ctx["direction"] == "falling" else "potential_growth"
 
 
+def _retail(ctx):
+    # A watched brand cutting dealers out (direct sales, agency model) is a risk; expanding its network is growth.
+    return "potential_risk" if ctx["direction"] == "falling" else "potential_growth"
+
+
 # signal: (watched company, watched brand, not on the watchlist). None = don't show.
 ROUTING = {
     "acquisition": (_acq, FALL, "new_business"),
@@ -770,7 +813,7 @@ ROUTING = {
     "leadership_change": ("potential_risk", FALL, "new_business"),
     "tech_investment": ("potential_growth", FALL, "new_business"),
     "oem_dms_certification": (FALL, _cert_brand, _cert_other),
-    "oem_retail_strategy": (FALL, "potential_growth", "industry_development"),
+    "oem_retail_strategy": (FALL, _retail, "industry_development"),
     "major_recall": (FALL, "potential_growth", None),
     "sales_shift": (FALL, _sales, "industry_development"),
     "launch": (FALL, "potential_growth", "industry_development"),
@@ -791,7 +834,8 @@ def match_watchlist(tag: dict, watchlist: list[dict]) -> tuple[dict | None, dict
     brands = {norm_company(b) for b in tag["brands"]}
     for w in watchlist:
         names = _names(w)
-        hits = [c for c in tag["companies"] if norm_company(c["name"]) in names]
+        # Only when the story is about the company: a passing mention (role "other") isn't news about that account.
+        hits = [c for c in tag["companies"] if norm_company(c["name"]) in names and c["role"] != "other"]
         if hits and not company_hit:
             hits.sort(key=lambda c: ROLE_ORDER.index(c["role"]) if c["role"] in ROLE_ORDER else 9)
             company_hit = {"name": w["name"], "role": hits[0]["role"]}
@@ -812,13 +856,22 @@ def cert_party(tag: dict, rules: dict) -> str | None:
     return "other"
 
 
-def route(tag: dict, watchlist: list[dict], rules: dict) -> tuple[str, str | None] | None:
-    """Section for a tagged story and the watchlist name that matched (if any). None = leave out."""
+def in_regions(tag: dict, regions: list[str] | None) -> bool:
+    return not regions or tag.get("region") in (None, "Global", "Unknown") or tag["region"] in regions
+
+
+def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | None = None) -> tuple[str, str | None] | None:
+    """Category for a tagged story and the watchlist name that matched (if any). None = leave out.
+    Outside the team's regions: a watched company still counts (it's an account); a watched brand's news and
+    anything else is left out, except competitor incidents."""
     if not tag["relevant"] or not tag["signal"]:
         return None
     company_cell, brand_cell, other_cell = ROUTING[tag["signal"]]
     ctx = {"role": None, "cert": cert_party(tag, rules), "direction": tag["direction"]}
     company_hit, brand_hit = match_watchlist(tag, watchlist)
+    local = in_regions(tag, regions)
+    if not local and not company_hit and tag["signal"] != "competitor_incident":
+        return None
 
     def cell(c, extra=None):
         return c({**ctx, **(extra or {})}) if callable(c) else c
@@ -840,30 +893,46 @@ def route(tag: dict, watchlist: list[dict], rules: dict) -> tuple[str, str | Non
 
 
 def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
-    """Confidence gate, Priority, ordering and caps. `history` is [{company, key, at}] from earlier runs."""
+    """Two sections. Existing accounts: every story about a watchlist name (labelled Risk or Growth where the
+    routing says so). New accounts: prospect stories (routed to new business) about anyone else. Other stories
+    are left out. Then confidence gates, Priority, ordering, a per-outlet cap and section caps.
+    `history` is [{company, key, at}] from earlier emails."""
     s = rules["settings"]
     brand_names = {norm_company(b) for b in rules["brands"]}
-    counts: dict[str, set] = {}
-    for h in history:
-        counts.setdefault(h["company"], set()).add(h["key"])
-    for c in candidates:
-        for co in c["tag"]["companies"]:
-            counts.setdefault(norm_company(co["name"]), set()).add(c["story"]["canonical"])
+    # Priority = news about the same company in an earlier email within the window, and again today.
+    earlier = {h["company"] for h in history}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
-        section = c["section"]
-        if section in ACTION_SECTIONS and c["tag"]["confidence"] < s["confidence_gate"]:
-            section = "industry_development"
+        conf = c["tag"]["confidence"]
+        if c.get("matched"):
+            if conf < s["watchlist_confidence_gate"]:
+                continue
+            section = "existing_accounts"
+            c["label"] = LABELS.get(c["section"]) if conf >= s["confidence_gate"] else None
+        elif c["section"] == "new_business" and conf >= s["confidence_gate"]:
+            section, c["label"] = "new_accounts", None
+        else:
+            continue
         c["priority"] = any(
-            norm_company(co["name"]) not in brand_names and len(counts.get(norm_company(co["name"]), ())) >= s["priority"]["min_signals"]
+            (n := norm_company(co["name"])) not in brand_names and n in earlier and co["role"] != "other"
             for co in c["tag"]["companies"]
         )
         out[section].append(c)
+    per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (not c["priority"], -c["tag"]["confidence"], c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
+        out[sec].sort(key=lambda c: (not c["priority"], c.get("label") is None, -c["tag"]["confidence"], c["story"]["tier"],
+                                     -c["story"]["outlets"], -c["story"]["published"].timestamp()))
+        kept = []
+        for c in out[sec]:
+            host = urlsplit(c["story"]["url"]).hostname or c["story"]["publisher"]
+            if c["story"].get("is_aggregator"):
+                host = c["story"]["publisher"]
+            if per_outlet.get(host, 0) >= s["max_per_outlet"]:
+                continue
+            per_outlet[host] = per_outlet.get(host, 0) + 1
+            kept.append(c)
         cap = s["caps"].get(sec)
-        if cap is not None:
-            out[sec] = out[sec][:cap]
+        out[sec] = kept[:cap] if cap is not None else kept
     return out
 
 
@@ -872,6 +941,16 @@ def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
 def _sentence(s: str) -> str:
     s = s.strip()
     return s if not s or s[-1] in ".!?" else s + "."
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def _outlet(story: dict, tag: dict) -> str:
+    """The publication's name. Exa items carry a bare domain; the AI supplies the usual name when it can."""
+    pub = story["publisher"]
+    return tag.get("outlet") or pub if "." in pub else pub
 
 
 def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | None, degraded: bool) -> tuple[str, str, str]:
@@ -888,19 +967,27 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
             f'<body style="margin:0;padding:0;background:#ffffff;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
             f'<tr><td style="padding:24px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'style="max-width:640px;{font}font-size:15px;line-height:1.5;color:#1f2328;"><tr><td>')
+    footer_line = "Reply to this email to add a company to the watchlist or to share feedback."
+    footer_html = f'<p style="margin:28px 0 0;color:#57606a;font-size:13px;">{footer_line}</p>'
     tail = "</td></tr></table></td></tr></table></body></html>"
     partial_html = '<p style="margin:0 0 16px;color:#57606a;font-size:13px;">Coverage was partial today.</p>' if degraded else ""
     partial_text = "Coverage was partial today.\n\n" if degraded else ""
 
     if total == 0:
         line = f"There were no relevant automotive developments {period.replace('from ', 'in ', 1)}."
-        subject = f"Automotive market summary – {date_label} (no new developments)"
-        return subject, f'{head}<p style="margin:0 0 16px;">Good morning,</p>{partial_html}<p style="margin:0;">{html.escape(line)}</p>{tail}', f"Good morning,\n\n{partial_text}{line}\n"
+        subject = f"Automotive sales signals – {date_label} (no new developments)"
+        return (subject, f'{head}<p style="margin:0 0 16px;">Good morning,</p>{partial_html}<p style="margin:0;">{html.escape(line)}</p>{footer_html}{tail}',
+                f"Good morning,\n\n{partial_text}{line}\n\n{footer_line}\n")
 
-    subject = f"Automotive market summary – {date_label}"
-    intro = f"Please find below the automotive developments {period} that are relevant to our accounts and markets."
+    n_old, n_new = len(sections["existing_accounts"]), len(sections["new_accounts"])
+    parts = [p for p in (_count(n_old, "existing account", "existing accounts") if n_old else "",
+                         _count(n_new, "new account", "new accounts") if n_new else "") if p]
+    subject = f"Automotive sales signals – {date_label}: {', '.join(parts)}"
+    about = " and ".join(p for p in (f"{n_old} about existing accounts" if n_old else "", f"{n_new} about new accounts" if n_new else "") if p)
+    intro = f"Below are {_count(total, 'automotive development', 'automotive developments')} {period}: {about}."
     h = [head, '<p style="margin:0 0 16px;">Good morning,</p>', partial_html, f'<p style="margin:0 0 8px;">{html.escape(intro)}</p>']
     t = ["Good morning,", "", partial_text + intro, ""]
+    seen_impl: set[str] = set()
     for sec in SECTIONS:
         if not sections[sec]:
             continue
@@ -909,19 +996,25 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
         for c in sections[sec]:
             story, tag = c["story"], c["tag"]
             fact = _sentence(tag["summary"] or story["title"])
-            watch = f" {c['matched']} is on your watchlist." if c.get("matched") else ""
-            prio = "Priority: " if c["priority"] else ""
+            tags_ = [x for x in ("Priority" if c["priority"] else "", c.get("matched") or "", c.get("label") or "") if x]
+            lead = " · ".join(tags_)
             impl = _sentence(tag["implication"]) if tag["implication"] else ""
+            if impl.lower() in seen_impl:
+                impl = ""  # never print the same line twice in one email
+            seen_impl.add(impl.lower())
+            outlet = _outlet(story, tag)
             h.append(
-                f'<p style="margin:0 0 14px;">{"<strong>Priority:</strong> " if prio else ""}{html.escape(fact)}{html.escape(watch)} '
-                f'(<a href="{html.escape(story["url"], quote=True)}" style="color:#0b5cad;">{html.escape(story["publisher"])}</a>)'
+                '<p style="margin:0 0 14px;">' + (f"<strong>{html.escape(lead)}</strong> – " if lead else "") + html.escape(fact)
+                + f' (<a href="{html.escape(story["url"], quote=True)}" style="color:#0b5cad;">{html.escape(outlet)}</a>)'
                 + (f'<br><em style="color:#424a53;">Why it matters: {html.escape(impl)}</em>' if impl else "") + "</p>"
             )
-            t.append(f"- {prio}{fact}{watch} ({story['publisher']}: {story['url']})")
+            t.append(f"- {lead + ' – ' if lead else ''}{fact} ({outlet}: {story['url']})")
             if impl:
                 t.append(f"   Why it matters: {impl}")
             t.append("")
+    h.append(footer_html)
     h.append(tail)
+    t.append(footer_line)
     return subject, "".join(h), "\n".join(t)
 
 
@@ -979,6 +1072,10 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     # A missed day widens the window to cover everything since the last email (capped).
     window_start = max(max_start, min(last, default_start)) if last else default_start
 
+    if cfg.get("regions"):
+        # Point the Exa searches at the team's regions ("... in the United States or Canada").
+        hint = " in " + " or ".join(REGION_HINTS[r] for r in cfg["regions"])
+        rules = {**rules, "sources": [{**src, "query": src["query"] + hint} if src["type"] == "exa" else src for src in rules["sources"]]}
     items, ok, failed = collect(rules, window_start, now, fetcher)
     attempted = len(ok) + len(failed)
     log(f"Collect: {len(ok)}/{attempted} sources ok, {len(items)} items in window" + (f", failed: {', '.join(f['id'] for f in failed)}" if failed else ""))
@@ -995,7 +1092,7 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
 
     candidates = []
     for st in relevant:
-        r = route(tags[st["id"]], cfg["watchlist"], rules)
+        r = route(tags[st["id"]], cfg["watchlist"], rules, cfg.get("regions"))
         if r:
             candidates.append({"story": st, "tag": tags[st["id"]], "section": r[0], "matched": r[1]})
     sections = rank(candidates, rules, state["history"])

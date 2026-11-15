@@ -8,8 +8,14 @@ recipients:
 send_hour: 8
 timezone: America/Chicago
 
+# Optional. Regions the team sells into: North America, Europe, India, Middle East, Asia Pacific,
+# Latin America, Africa. News elsewhere is left out unless it's about a watchlist company.
+# Delete the list to cover every region.
+regions:
+  - North America
+
 # Optional. Companies or brands to watch, one per line, aliases after a bar.
-# News about them goes into "Potential risk" / "Potential growth". Delete the list to turn this off.
+# News about them goes under "Existing accounts". Delete the list to turn this off.
 watchlist:
   - AutoNation | AutoNation USA
   - Lithia Motors | Lithia, Lithia & Driveway, Driveway
@@ -22,3 +28,5 @@ watchlist:
   - Ford
   - Hyundai
   - Kia
+  - BMW | BMW Group
+  - Volkswagen | VW, Volkswagen Group
