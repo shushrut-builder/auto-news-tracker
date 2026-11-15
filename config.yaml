@@ -8,7 +8,7 @@ recipients:
 send_hour: 8
 timezone: America/Chicago
 
-# Who the team contacts to add a company or share feedback (the email is no-reply).
+# Who the team contacts to share feedback (the email is no-reply).
 contact: Shushrut
 
 # Optional. Regions the team sells into: North America, Europe, India, Middle East, Asia Pacific,

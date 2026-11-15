@@ -1004,8 +1004,7 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
             f'<tr><td style="padding:24px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'style="max-width:640px;{font}font-size:15px;line-height:1.5;color:#1f2328;"><tr><td>')
     who = contact or "the team that runs this report"
-    footer_line = (f"This is an automated email, so replies aren't read. To add a company to the watchlist "
-                   f"or share feedback, message {who} on Slack or by email.")
+    footer_line = f"This is an automated email, so replies aren’t read. To share feedback, message {who} on Slack or by email."
     footer_html = f'<p style="margin:28px 0 0;color:#57606a;font-size:13px;">{html.escape(footer_line)}</p>'
     tail = "</td></tr></table></td></tr></table></body></html>"
     partial_html = '<p style="margin:0 0 16px;color:#57606a;font-size:13px;">Coverage was partial today.</p>' if degraded else ""

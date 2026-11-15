@@ -485,7 +485,7 @@ def test_email_format(tmp_path):
     assert mail["text"].startswith("Hi Team,\n\nHere's what happened in the automotive world in the last 24 hours.")
     assert "NEW ACCOUNTS" in mail["text"]
     assert "Existing accounts" not in mail["html"]  # no watchlist, so no existing-accounts section
-    assert "replies aren't read" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
+    assert "This is an automated email, so replies aren’t read. To share feedback, message Shushrut" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
     assert " should " not in mail["text"].lower()
     import re
     urls = re.findall(r"\(([^:()]+): (https?://\S+)\)", mail["text"])
