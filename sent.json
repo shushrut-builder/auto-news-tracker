@@ -8,6 +8,16 @@
    "error": "(525, b'5.7.1 Unauthorized IP address')",
    "mode": "send",
    "status": "failed"
+  },
+  {
+   "at": "2026-11-15T16:05:02.239418+00:00",
+   "failed_sources": [
+    "khaleej-times"
+   ],
+   "items": 12,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok"
   }
  ],
  "sent_items": []
