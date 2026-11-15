@@ -308,13 +308,17 @@ def test_tekion_and_competitor_news_has_its_own_section():
         c = _cand("industry_development", conf, host=host)
         c["tag"] = tag(signal=signal, confidence=conf, companies=[{"name": name, "role": "subject"}])
         return c
-    cands = [vendor("CDK", "competitor_incident"), vendor("Tekion", "vendor_news", host="w.com"),
-             vendor("Reynolds and Reynolds", "competitor_selected", host="y.com")]
+    win = vendor("Reynolds and Reynolds", "competitor_selected", host="y.com")
+    win["tag"]["companies"].insert(0, {"name": "Smith Auto Group", "role": "subject"})
+    cands = [vendor("CDK", "competitor_incident"), vendor("Tekion", "vendor_news", host="w.com"), win]
     out = S.rank(cands, RULES)
-    leads = [c["lead"] for c in out["tekion_competitors"]]
-    assert leads[0] == "Tekion"  # our own news first
-    assert set(leads[1:]) == {"CDK Global", "Reynolds and Reynolds"}
-    assert out["new_accounts"] == [] and out["existing_accounts"] == []
+    assert [c["lead"] for c in out["tekion_competitors"]] == ["Tekion", "CDK Global"]  # our own news first
+    # A dealer choosing a competitor is a new account, labelled with the dealer.
+    assert [c["lead"] for c in out["new_accounts"]] == ["Smith Auto Group"] and out["existing_accounts"] == []
+    # It follows the team's regions like other prospects.
+    far = tag(signal="competitor_selected", region="Europe",
+              companies=[{"name": "Euro Motors", "role": "subject"}, {"name": "Keyloop", "role": "subject"}])
+    assert S.route(far, CTX_WATCH, RULES, ["North America"]) is None
     # From any region: a competitor's news abroad still counts.
     t_ = tag(signal="vendor_news", companies=[{"name": "Keyloop", "role": "subject"}], region="Europe")
     assert S.route(t_, CTX_WATCH, RULES, ["North America"]) is not None

@@ -883,15 +883,17 @@ def in_regions(tag: dict, regions: list[str] | None) -> bool:
 def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | None = None) -> tuple[str, str | None] | None:
     """Category for a tagged story and the watchlist name that matched (if any). None = leave out.
     Outside the team's regions: a watched company still counts (it's an account); a watched brand's news and
-    anything else is left out, except competitor incidents."""
+    anything else is left out, except news about us or competitors. A dealer choosing a competitor is a
+    prospect story about the dealer, so it follows the regions like other prospects."""
     if not tag["relevant"] or not tag["signal"]:
         return None
     company_cell, brand_cell, other_cell = ROUTING[tag["signal"]]
     ctx = {"role": None, "cert": cert_party(tag, rules), "direction": tag["direction"]}
     company_hit, brand_hit = match_watchlist(tag, watchlist)
     local = in_regions(tag, regions)
-    if not local and not company_hit and tag["signal"] not in ("competitor_incident", "competitor_selected", "vendor_news") \
-            and not vendor_kind(tag, rules):
+    vendor_story = tag["signal"] in ("competitor_incident", "vendor_news") or (
+        tag["signal"] != "competitor_selected" and vendor_kind(tag, rules))
+    if not local and not company_hit and not vendor_story:
         return None
 
     def cell(c, extra=None):
@@ -913,10 +915,20 @@ def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | No
     return (r, None) if r and r != FALL else None
 
 
+def dealer_name(tag: dict, rules: dict) -> str:
+    """The dealer in a story that also names a software provider (the first named company that isn't one)."""
+    for co in tag["companies"]:
+        if co["role"] != "other" and not vendor_kind({"companies": [co]}, rules):
+            return co["name"]
+    return ""
+
+
 def lead_name(c: dict, rules: dict) -> str:
     """The company an item is about, for its label."""
     if c.get("matched"):
         return c["matched"]
+    if c.get("dealer"):
+        return c["dealer"]
     if c.get("vendor"):
         return c["vendor"][1]
     for role in ("acquirer", "subject", "target", "certified"):
@@ -929,7 +941,8 @@ def lead_name(c: dict, rules: dict) -> str:
 def rank(candidates: list[dict], rules: dict) -> dict:
     """Three sections:
     - Existing accounts: every story about a watchlist name.
-    - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions.
+    - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions,
+      including a dealer choosing a competitor (labelled with the dealer).
     - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
     Within a section, items are ordered by sales signal (settings.signal_order), then a per-outlet cap
     and section caps. Nothing is marked as a priority: the team decides that."""
@@ -940,6 +953,12 @@ def rank(candidates: list[dict], rules: dict) -> dict:
         c.setdefault("vendor", vendor_kind(c["tag"], rules))
         if c.get("matched"):
             section = "existing_accounts"
+        elif c["tag"]["signal"] == "competitor_selected":
+            # A dealer choosing a competitor: the dealer is a new account to work on. Needs a named dealer.
+            c["dealer"] = dealer_name(c["tag"], rules)
+            if not c["dealer"]:
+                continue
+            section = "new_accounts"
         elif c["vendor"]:
             section = "tekion_competitors"
         elif c["section"] == "new_business":
