@@ -286,17 +286,17 @@ def _cand(section, conf, companies=(), tier=2, matched=None, host="x.com"):
 
 def test_sections_gates_labels_and_caps():
     out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9, ["Dealer Group D"], host="a.com"),
-                  _cand("industry_development", 0.95, host="b.com")], RULES, [])
+                  _cand("industry_development", 0.95, host="b.com")], RULES)
     # Low confidence and background stories are left out; only prospects go to New accounts.
     assert [c["lead"] for c in out["new_accounts"]] == ["Dealer Group D"] and out["existing_accounts"] == []
     # Watchlist stories go to Existing accounts, labelled with the account and the event type.
     an = _cand("potential_risk", 0.9, matched="AutoNation")
     an["tag"]["region"] = "North America"
     out = S.rank([an, _cand("industry_development", 0.6, matched="Kia", host="a.com"),
-                  _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES, [])
+                  _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES)
     assert [c["lead"] for c in out["existing_accounts"]] == ["AutoNation · North America", "Kia"]  # Ford below the gate; no region when unknown
     many = [_cand("new_business", 0.9 - i / 100, host=f"h{i}.com") for i in range(9)]
-    assert len(S.rank(many, RULES, [])["new_accounts"]) == 6
+    assert len(S.rank(many, RULES)["new_accounts"]) == 6
 
 
 def test_tekion_and_competitor_news_has_its_own_section():
@@ -306,7 +306,7 @@ def test_tekion_and_competitor_news_has_its_own_section():
         return c
     cands = [vendor("CDK", "competitor_incident"), vendor("Tekion", "vendor_news", host="w.com"),
              vendor("Reynolds and Reynolds", "competitor_selected", host="y.com")]
-    out = S.rank(cands, RULES, [])
+    out = S.rank(cands, RULES)
     leads = [c["lead"] for c in out["tekion_competitors"]]
     assert leads[0] == "Tekion"  # our own news first
     assert set(leads[1:]) == {"CDK Global", "Reynolds and Reynolds"}
@@ -318,19 +318,12 @@ def test_tekion_and_competitor_news_has_its_own_section():
 
 def test_at_most_two_items_per_outlet():
     same = [_cand("new_business", 0.9 - i / 100, host="theedgemalaysia.com") for i in range(5)]
-    assert len(S.rank(same, RULES, [])["new_accounts"]) == 2
+    assert len(S.rank(same, RULES)["new_accounts"]) == 2
 
 
-def test_priority_needs_an_earlier_email_and_skips_brands():
-    history = [{"company": "busy", "key": "https://old.com/1", "at": "2026-11-10T00:00:00+00:00"},
-               {"company": "toyota", "key": "https://old.com/2", "at": "2026-11-10T00:00:00+00:00"}]
-    out = S.rank([_cand("new_business", 0.8, ["Busy Group"]), _cand("new_business", 0.95, ["Toyota"], host="a.com")], RULES, history)
-    first = out["new_accounts"][0]
-    assert first["priority"] and first["tag"]["companies"][0]["name"] == "Busy Group"
-    assert not out["new_accounts"][1]["priority"]
-    # Two stories about the same company today, with no earlier email, is not Priority.
-    out = S.rank([_cand("new_business", 0.8, ["Proton"]), _cand("new_business", 0.9, ["Proton"], host="a.com")], RULES, [])
-    assert not any(c["priority"] for c in out["new_accounts"])
+def test_nothing_is_marked_priority():
+    out = S.rank([_cand("new_business", 0.8, ["Busy Group"]), _cand("new_business", 0.9, ["Busy Group"], host="a.com")], RULES)
+    assert all("priority" not in c for c in out["new_accounts"])
 
 
 def test_passing_mention_is_not_a_watchlist_match():
@@ -349,7 +342,7 @@ def test_regions():
     # In region, Global, Unknown or no regions configured: normal routing.
     for r in ("North America", "Global", "Unknown"):
         assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], region=r), CTX_WATCH, RULES, ["North America"])
-    assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], **abroad), CTX_WATCH, RULES, [])
+    assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], **abroad), CTX_WATCH, RULES)
 
 
 def test_oem_moving_away_from_dealers_is_a_risk():

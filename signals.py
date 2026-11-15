@@ -926,17 +926,14 @@ def lead_name(c: dict, rules: dict) -> str:
     return (c["tag"]["brands"] or [""])[0]
 
 
-def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
+def rank(candidates: list[dict], rules: dict) -> dict:
     """Three sections:
     - Existing accounts: every story about a watchlist name.
     - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions.
     - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
-    Then confidence gates, Priority, ordering, a per-outlet cap and section caps.
-    `history` is [{company, key, at}] from earlier emails."""
+    Then confidence gates, ordering, a per-outlet cap and section caps. Nothing is marked as a priority:
+    the team decides that."""
     s = rules["settings"]
-    brand_names = {norm_company(b) for b in rules["brands"]}
-    # Priority = news about the same company in an earlier email within the window, and again today.
-    earlier = {h["company"] for h in history}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
         conf = c["tag"]["confidence"]
@@ -954,14 +951,10 @@ def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
         # Label: company · region (region left out when unknown).
         region = c["tag"].get("region") or ""
         c["lead"] = " · ".join(x for x in (lead_name(c, rules), region if region != "Unknown" else "") if x)
-        c["priority"] = section != "tekion_competitors" and any(
-            (n := norm_company(co["name"])) not in brand_names and n in earlier and co["role"] != "other"
-            for co in c["tag"]["companies"]
-        )
         out[section].append(c)
     per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), not c["priority"], -c["tag"]["confidence"],
+        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), -c["tag"]["confidence"],
                                      c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept = []
         for c in out[sec]:
@@ -1028,7 +1021,7 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
         for c in sections[sec]:
             story, tag = c["story"], c["tag"]
             fact = _sentence(tag["summary"] or story["title"])
-            lead = ("Priority: " if c["priority"] else "") + c.get("lead", "")
+            lead = c.get("lead", "")
             impl = _sentence(tag["implication"]) if tag["implication"] else ""
             if impl.lower() in seen_impl:
                 impl = ""  # never print the same line twice in one email
@@ -1080,15 +1073,14 @@ def send_email(recipients: list[str], subject: str, html_body: str, text_body: s
 def load_state(path: Path) -> dict:
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
-    return {"last_sent_date": None, "last_sent_at": None, "sent_items": [], "history": [], "runs": []}
+    return {"last_sent_date": None, "last_sent_at": None, "sent_items": [], "runs": []}
 
 
 def save_state(path: Path, state: dict, now: dt.datetime, rules: dict) -> None:
     s = rules["settings"]
     keep_sent = (now - dt.timedelta(days=s["sent_memory_days"])).isoformat()
-    keep_hist = (now - dt.timedelta(days=s["priority"]["window_days"])).isoformat()
     state["sent_items"] = [x for x in state["sent_items"] if x["at"] >= keep_sent]
-    state["history"] = [x for x in state["history"] if x["at"] >= keep_hist]
+    state.pop("history", None)  # no longer used
     state["runs"] = state["runs"][-30:]
     path.write_text(json.dumps(state, indent=1, sort_keys=True), encoding="utf-8")
 
@@ -1126,7 +1118,7 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
         r = route(tags[st["id"]], cfg["watchlist"], rules, cfg.get("regions"))
         if r:
             candidates.append({"story": st, "tag": tags[st["id"]], "section": r[0], "matched": r[1]})
-    sections = rank(candidates, rules, state["history"])
+    sections = rank(candidates, rules)
     degraded = len(ok) < 0.4 * attempted or fallback > 0
     local_now = now.astimezone(ZoneInfo(cfg["timezone"]))
     subject, html_body, text_body = compose(sections, local_now, window_start if last else None, degraded, cfg.get("contact", ""))
@@ -1206,9 +1198,6 @@ def main(argv=None, now: dt.datetime | None = None, fetcher=None, ai_client=None
             for c in report["included"]:
                 st = c["story"]
                 state["sent_items"].append({"url": st["canonical"], "tokens": st["tokens"], "at": now.isoformat()})
-            for st in report["relevant"]:
-                for co in report["tags"][st["id"]]["companies"]:
-                    state["history"].append({"company": norm_company(co["name"]), "key": st["canonical"], "at": now.isoformat()})
         run.update(status="degraded" if report["degraded"] else "ok", items=len(report["included"]), recipients=len(recipients),
                    failed_sources=[f["id"] for f in report["failed_sources"]])
         return 0

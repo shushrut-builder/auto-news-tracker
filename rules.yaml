@@ -574,9 +574,6 @@ settings:
   confidence_gate: 0.7          # New accounts, and the Risk / Growth label on existing accounts
   watchlist_confidence_gate: 0.5  # below this, even watchlist news is left out
   max_per_outlet: 2             # at most this many items from one publication per email
-  priority:
-    min_signals: 2
-    window_days: 30
   caps:
     existing_accounts: 10
     new_accounts: 6
