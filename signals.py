@@ -11,6 +11,7 @@ report to everyone in config.yaml at the configured local time.
 
 Email settings come from environment variables: SMTP_USER, SMTP_PASS (a Gmail app password),
 and optionally SMTP_HOST (default smtp.gmail.com), SMTP_PORT (default 465), MAIL_FROM.
+Optional: EXA_API_KEY adds the Exa news searches listed in rules.yaml as extra sources.
 """
 from __future__ import annotations
 
@@ -274,13 +275,77 @@ def parse_nhtsa(body: bytes, source: dict) -> list[dict]:
     return out
 
 
-def collect(rules: dict, since: dt.datetime, now: dt.datetime, fetcher=None) -> tuple[list[dict], list[str], list[dict]]:
-    """Fetch every source in parallel. Returns (items in window, ok source ids, failed [{id, error}])."""
+EXA_URL = "https://api.exa.ai/search"
+
+
+def exa_search(source: dict, since: dt.datetime, settings: dict, key: str) -> dict:
+    """One Exa news search: articles published since the last email, with a few sentences from each."""
+    payload = {
+        "query": source["query"],
+        "type": "auto",
+        "category": "news",
+        "numResults": source.get("num_results", 10),
+        "startPublishedDate": since.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "contents": {"highlights": {"numSentences": 3, "highlightsPerUrl": 1}},
+    }
+    if source.get("exclude_domains"):
+        payload["excludeDomains"] = source["exclude_domains"]
+    last = None
+    for attempt in range(settings["retries"] + 1):
+        try:
+            r = requests.post(EXA_URL, json=payload, timeout=max(settings["timeout_seconds"], 20),
+                              headers={"x-api-key": key, "User-Agent": USER_AGENT})
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            last = e
+            if attempt < settings["retries"]:
+                time.sleep(0.3 * 2 ** attempt)
+    raise last  # type: ignore[misc]
+
+
+def parse_exa(data: dict, source: dict) -> list[dict]:
+    results = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(results, list):
+        raise ValueError("unexpected Exa response")
+    out = []
+    for r in results:
+        url, title, published = r.get("url"), (r.get("title") or "").strip(), r.get("publishedDate")
+        if not url or not title or not published:
+            continue
+        try:
+            when = dt.datetime.fromisoformat(published.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=dt.timezone.utc)
+        host = urlsplit(url).hostname or source["name"]
+        snippet = " ".join(r.get("highlights") or []) or r.get("summary") or (r.get("text") or "")[:600]
+        out.append({
+            "source_id": source["id"],
+            "url": url,
+            "title": title,
+            "snippet": snippet,
+            "published": when.astimezone(dt.timezone.utc),
+            "publisher": host.removeprefix("www."),
+        })
+    return out
+
+
+def collect(rules: dict, since: dt.datetime, now: dt.datetime, fetcher=None, exa=None) -> tuple[list[dict], list[str], list[dict]]:
+    """Fetch every source in parallel. Returns (items in window, ok source ids, failed [{id, error}]).
+    Exa searches run only when EXA_API_KEY is set (or an `exa` function is passed in, for tests)."""
     settings = rules["settings"]["fetch"]
     fetcher = fetcher or (lambda url: fetch(url, settings))
+    if exa is None and os.environ.get("EXA_API_KEY"):
+        key = os.environ["EXA_API_KEY"]
+        exa = lambda source, start: exa_search(source, start, settings, key)  # noqa: E731
+    sources = [s for s in rules["sources"] if s["type"] != "exa" or exa]
     ok, failed, items = [], [], []
 
     def one(source):
+        if source["type"] == "exa":
+            return parse_exa(exa(source, since), source)
         url = source["url"]
         if source["type"] == "nhtsa":
             url += "?" + urlencode({"$limit": 200, "$order": "report_received_date DESC", "$where": f"report_received_date >= '{since:%Y-%m-%d}T00:00:00'"})
@@ -288,7 +353,7 @@ def collect(rules: dict, since: dt.datetime, now: dt.datetime, fetcher=None) -> 
         return parse_nhtsa(body, source) if source["type"] == "nhtsa" else parse_feed(body, source)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=settings["workers"]) as pool:
-        futures = {pool.submit(one, s): s for s in rules["sources"]}
+        futures = {pool.submit(one, s): s for s in sources}
         for fut in concurrent.futures.as_completed(futures):
             source = futures[fut]
             try:
@@ -915,7 +980,8 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     window_start = max(max_start, min(last, default_start)) if last else default_start
 
     items, ok, failed = collect(rules, window_start, now, fetcher)
-    log(f"Collect: {len(ok)}/{len(rules['sources'])} sources ok, {len(items)} items in window" + (f", failed: {', '.join(f['id'] for f in failed)}" if failed else ""))
+    attempted = len(ok) + len(failed)
+    log(f"Collect: {len(ok)}/{attempted} sources ok, {len(items)} items in window" + (f", failed: {', '.join(f['id'] for f in failed)}" if failed else ""))
     items = normalize(items)
     items, dropped = prefilter(items, rules)
     log(f"Clean: {len(items)} kept, {dropped} dropped as noise or off-topic")
@@ -933,7 +999,7 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
         if r:
             candidates.append({"story": st, "tag": tags[st["id"]], "section": r[0], "matched": r[1]})
     sections = rank(candidates, rules, state["history"])
-    degraded = len(ok) < 0.4 * len(rules["sources"]) or fallback > 0
+    degraded = len(ok) < 0.4 * attempted or fallback > 0
     local_now = now.astimezone(ZoneInfo(cfg["timezone"]))
     subject, html_body, text_body = compose(sections, local_now, window_start if last else None, degraded)
     included = [c for sec in SECTIONS for c in sections[sec]]

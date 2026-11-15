@@ -131,9 +131,57 @@ def test_prefilter_general_feeds_need_automotive_context():
     assert [i["title"] for i in kept] == ["Kia to invest $2 bln in India to ramp up production"]
 
 
+# ---------------------------------------------------------------- Exa searches
+
+EXA_SOURCE = {"id": "exa-acquisition", "name": "Exa", "type": "exa", "query": "dealer group acquires car dealerships", "tier": 3, "auto_only": False}
+EXA_RESPONSE = {"results": [
+    {"title": "Dealer Group C acquires five-store group", "url": "https://www.example-trade.com/news/dgc-acquires",
+     "publishedDate": "2026-11-14T09:30:00.000Z", "highlights": ["Dealer Group C has agreed to buy five stores in Texas."]},
+    {"title": "No date, so skipped", "url": "https://example.com/x"},
+    {"title": "", "url": "https://example.com/y", "publishedDate": "2026-11-14T09:30:00.000Z"},
+]}
+
+
+def test_parse_exa_uses_publisher_link_and_article_sentences():
+    items = S.parse_exa(EXA_RESPONSE, EXA_SOURCE)
+    assert len(items) == 1
+    it = items[0]
+    assert it["url"] == "https://www.example-trade.com/news/dgc-acquires"
+    assert it["publisher"] == "example-trade.com"
+    assert it["snippet"] == "Dealer Group C has agreed to buy five stores in Texas."
+    assert it["published"] == dt.datetime(2026, 11, 14, 9, 30, tzinfo=dt.timezone.utc)
+    with pytest.raises(ValueError):
+        S.parse_exa({"error": "bad key"}, EXA_SOURCE)
+
+
+def test_exa_searches_skipped_without_key_and_failures_dont_stop_the_run(monkeypatch):
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
+    rules = fixture_rules()
+    rules["sources"] = rules["sources"] + [EXA_SOURCE, {**EXA_SOURCE, "id": "exa-broken"}]
+    now = fixture_now()
+    since = now - dt.timedelta(hours=72)
+
+    # No key: Exa sources aren't attempted at all, so they don't count as failures.
+    _, ok, failed = S.collect(rules, since, now, fixture_fetcher)
+    assert failed == [] and not any(i.startswith("exa-") for i in ok)
+
+    # With Exa available: results come in, and one failing search is skipped like any other source.
+    def fake_exa(source, start):
+        assert start == since
+        if source["id"] == "exa-broken":
+            raise RuntimeError("timeout")
+        resp = json.loads(json.dumps(EXA_RESPONSE))
+        resp["results"][0]["publishedDate"] = (now - dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        return resp
+
+    items, ok, failed = S.collect(rules, since, now, fixture_fetcher, exa=fake_exa)
+    assert "exa-acquisition" in ok and [f["id"] for f in failed] == ["exa-broken"]
+    assert any(i["publisher"] == "example-trade.com" and not i["is_aggregator"] for i in items)
+
+
 # ---------------------------------------------------------------- keyword rules
 
-CTX = S.RulesContext(RULES, S.parse_watchlist(["Lithia Motors | Lithia", "AutoNation", "Hyundai", "Toyota"]))
+CTX =S.RulesContext(RULES, S.parse_watchlist(["Lithia Motors | Lithia", "AutoNation", "Hyundai", "Toyota"]))
 
 
 def _story(title, snippet=""):

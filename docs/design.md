@@ -8,13 +8,13 @@ Case 1: Daily Industry Intelligence Report · Workflow design, explanation and a
 
 A daily automotive news digest is easy to build and easy to ignore. What a business development team needs at 8:00 AM is narrower: what changed at the companies we sell to, and where a new opportunity opened yesterday.
 
-So the workflow turns public automotive news into **sales signals**. Every hour a scheduled job checks the clock; at the configured send time it collects from 43 public sources, removes noise and duplicates, uses an AI model (with a keyword-rules fallback) to extract what happened and to whom, routes each item into a section with fixed rules, and emails one short report to the team.
+So the workflow turns public automotive news into **sales signals**. Every hour a scheduled job checks the clock; at the configured send time it collects from 43 public sources (plus 8 optional Exa news searches), removes noise and duplicates, uses an AI model (with a keyword-rules fallback) to extract what happened and to whom, routes each item into a section with fixed rules, and emails one short report to the team.
 
 ```mermaid
 flowchart LR
   T[GitHub Actions, hourly] --> S{Send hour in config timezone, not sent today?}
   S -- no --> X[Stop]
-  S -- yes --> C[Collect 43 sources]
+  S -- yes --> C[Collect 43 sources + Exa]
   C --> F[Clean and pre-filter]
   F --> D[Remove duplicates]
   D --> A[Tag: AI, rules fallback]
@@ -25,7 +25,7 @@ flowchart LR
 
 | Brief requirement | How it's met | Section |
 |---|---|---|
-| Collect automotive information from public sources | Trade-press RSS, press releases, Federal Register, NHTSA recalls, regional business news, Google News searches | 7.1 |
+| Collect automotive information from public sources | Trade-press RSS, press releases, Federal Register, NHTSA recalls, regional business news, Google News searches, optional Exa news search | 7.1 |
 | Filter duplicate or irrelevant content | Noise filter, four duplicate checks, 14-day memory of what was sent | 7.2, 7.3 |
 | Summarize into a readable report | One fact and one implication per item, in five fixed sections | 7.5, 7.6 |
 | Send to a specified email address | Recipients listed in `config.yaml`; any address works | 7.7 |
@@ -195,8 +195,9 @@ A GitHub Actions job runs `signals.py` every hour at :17 UTC. It does real work 
 - the NHTSA recalls dataset, filtered to recalls affecting 10,000+ vehicles
 - regional business news (BusinessLine, Yonhap, The Korea Herald, The Japan Times, Khaleej Times)
 - 13 Google News searches, one per signal
+- optional: 8 Exa news searches for the high-value company signals (acquisition, new store, market entry, leadership change, competitor selected, tech investment, OEM retail strategy, competitor incident). They run only when `EXA_API_KEY` is set, return the publisher's own link instead of a Google redirect, and include a few sentences from the article, which gives the tagger more than a headline to work with. Cost is about $0.01 per search, so roughly $2–3 a month at one run a day plus test runs.
 
-It covers everything since the last email: 24 hours normally, up to 72 after a missed day. Only headlines and feed summaries are used.
+It covers everything since the last email: 24 hours normally, up to 72 after a missed day. Only headlines, feed summaries and Exa's short highlights are used; nothing is republished.
 
 ### 7.2 Clean and pre-filter
 
@@ -304,6 +305,7 @@ The email goes out over SMTP to every address in `config.yaml`. The job then com
 | Our company, competitors, noise and signal keywords | `rules.yaml` | No |
 | Thresholds and caps | `rules.yaml` | No |
 | Turn AI on or off | Add or remove the `ANTHROPIC_API_KEY` secret | No |
+| Turn Exa searches on or off, or change their queries | The `EXA_API_KEY` secret; queries are entries in `rules.yaml` | No |
 | Which section a signal goes to | `ROUTING` in `signals.py` (mirrors 7.5) | Yes |
 
 Both YAML files can be edited in GitHub's browser editor. Tests in `tests/` run on saved real feeds with no network and no email, covering what breaks quietly: link normalization and duplicate grouping, every cell of the routing table, the confidence gate, Priority and caps, the keyword rules including who bought whom, the AI response check and fallback, and the schedule (not before the send hour, once a day, retries, no repeats). Each stage is a separate function, so it maps onto workflow-tool nodes if a no-code version is ever preferred.
@@ -333,7 +335,7 @@ Both YAML files can be edited in GitHub's browser editor. Tests in `tests/` run 
 
 | Priority | What | Why here |
 |---|---|---|
-| **P0 (built)** | Hourly schedule, once-a-day send at a local time · 43 sources · noise filter and duplicate removal · AI tagging with rules fallback · routing table, confidence gate, Priority and caps · optional watchlist · one email to all recipients · GitHub failure alerts · preview and test-send | The minimum that meets all five requirements reliably |
+| **P0 (built)** | Hourly schedule, once-a-day send at a local time · 43 sources plus optional Exa searches · noise filter and duplicate removal · AI tagging with rules fallback · routing table, confidence gate, Priority and caps · optional watchlist · one email to all recipients · GitHub failure alerts · preview and test-send | The minimum that meets all five requirements reliably |
 | **P1** | "Acted on this / Not useful" links (needs a small web endpoint) · SEC filings for listed dealer groups · job postings as a buying-intent signal · resolving Google News redirect links to publisher URLs | Improves measurement and accuracy once the report is in use |
 | **Later** | Per-rep reports from CRM ownership · paid source for thin regions · non-English sources · Slack or Teams delivery · monthly sales data | Depends on CRM access, budget, or proof of use |
 
@@ -357,8 +359,8 @@ Both YAML files can be edited in GitHub's browser editor. Tests in `tests/` run 
 ## 13. Risks and open questions
 
 - **Misclassified items.** The first live sample shows the kinds of error to expect: a story about fake recall notices tagged as a recall, and a certified-used programme tagged as a launch. The labelled accuracy check and keyword tuning in week 0 address this; the confidence gate limits the damage by keeping weak tags out of the top sections.
-- **Google News links.** These point to Google redirects rather than publishers, which makes links long and weakens link-based duplicate checks. Headline matching covers duplicates for now; resolving links is P1.
-- **Thin snippets.** Google News summaries are often the headline repeated, so tagging is less accurate. Trade-press and press-release versions are preferred where they exist.
+- **Google News links.** These point to Google redirects rather than publishers, which makes links long and weakens link-based duplicate checks. Headline matching covers duplicates for now; Exa results already carry publisher links, and resolving Google's is P1.
+- **Thin snippets.** Google News summaries are often the headline repeated, so tagging is less accurate. Trade-press and press-release versions are preferred where they exist, and Exa results include sentences from the article itself.
 - **Company-name matching.** "Group 1" is a dealer group and an ordinary phrase; "Ford" appears in stories that aren't about Ford. Aliases, brand exclusions and the AI's company extraction help, but this is where false matches are most likely.
 - **Leadership changes are under-covered,** since most hires below C-level appear only on LinkedIn.
 - **Open question for the team:** is one shared report enough, or do reps need their own? The pilot survey answers this before any per-rep work starts.

@@ -45,7 +45,7 @@ Other providers work too: set `SMTP_HOST` and `SMTP_PORT` (465 for SSL, 587 for 
 ## Run it on GitHub (free)
 
 1. Push this folder to a GitHub repository.
-2. **Settings → Secrets and variables → Actions → New repository secret:** add `SMTP_USER` and `SMTP_PASS`. Optional: `ANTHROPIC_API_KEY` for AI tagging, and `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`.
+2. **Settings → Secrets and variables → Actions → New repository secret:** add `SMTP_USER` and `SMTP_PASS`. Optional: `ANTHROPIC_API_KEY` for AI tagging, `EXA_API_KEY` for the Exa news searches, and `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`.
 3. **Actions → Daily sales signals → Run workflow → mode: preview.** This builds the email without sending it; download it from the run's *email-preview* artifact.
 4. To check delivery, run it again with **mode: send-now** and your address in **to**. Only you get the copy, and it doesn't count as the day's email.
 
@@ -84,7 +84,7 @@ Tests:
 
 ## How it works
 
-1. **Collect.** 43 free public sources, fetched in parallel with a timeout and retries: trade-press RSS feeds (CBT News, Automotive Dive, Motor Trader, Autocar Professional and others), press-release wires, the Federal Register, SMMT, the NHTSA recalls dataset, regional business news, and 13 Google News searches. Only headlines and feed summaries are used; nothing is scraped or republished.
+1. **Collect.** 43 free public sources, fetched in parallel with a timeout and retries: trade-press RSS feeds (CBT News, Automotive Dive, Motor Trader, Autocar Professional and others), press-release wires, the Federal Register, SMMT, the NHTSA recalls dataset, regional business news, and 13 Google News searches. With `EXA_API_KEY` set, 8 Exa news searches are added, aimed at the high-value company signals (acquisitions, new stores, market entries, leadership changes, competitor news); they return the publisher's own link and a few sentences from each article, at about $0.01 per search. Only headlines, feed summaries and short highlights are used; nothing is republished.
 2. **Clean.** Tracking parameters are stripped from links and HTML from text. Noise is dropped: reviews, motorsport, deals, digests, spy shots. General-news feeds must also look automotive.
 3. **Remove duplicates.** Three checks: the same link; the same story from another outlet (similar headline, or the same signal about the same companies); anything emailed in the last 14 days. The most credible source is kept: press release first, then trade press, then general news.
 4. **Tag.** With `ANTHROPIC_API_KEY` set, Claude Haiku 5.5 reads stories in batches of 20 and extracts the signal, the companies and their roles (who bought whom), a factual summary, an implication and a confidence score. Names it returns are checked against the article text. If the AI is off or a batch fails, keyword rules from `rules.yaml` tag that batch instead.

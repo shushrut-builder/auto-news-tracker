@@ -202,6 +202,57 @@ sources:
   tier: 1
   auto_only: true
   min_affected: 10000
+# Exa news searches: used only when EXA_API_KEY is set (about $0.01 per search, one run a day).
+# Aimed at the high-value company signals that RSS feeds catch least. Exa returns the publisher's
+# own link and a few sentences from the article, so these items tag better than headline-only ones.
+- id: exa-acquisition
+  name: Exa
+  type: exa
+  query: 'dealer group acquires car dealerships'
+  tier: 3
+  auto_only: false
+- id: exa-new_store
+  name: Exa
+  type: exa
+  query: 'auto group opens new car dealership'
+  tier: 3
+  auto_only: false
+- id: exa-market_entry
+  name: Exa
+  type: exa
+  query: 'car brand appoints new distributor or importer to enter a market'
+  tier: 3
+  auto_only: false
+- id: exa-leadership_change
+  name: Exa
+  type: exa
+  query: 'dealer group or automaker names new CIO, CTO or head of digital retail'
+  tier: 3
+  auto_only: false
+- id: exa-competitor_selected
+  name: Exa
+  type: exa
+  query: 'dealer group selects new dealer management system'
+  tier: 3
+  auto_only: false
+- id: exa-tech_investment
+  name: Exa
+  type: exa
+  query: 'car dealer group invests in AI or digital retail software'
+  tier: 3
+  auto_only: false
+- id: exa-oem_retail_strategy
+  name: Exa
+  type: exa
+  query: 'automaker changes dealer network or moves to agency sales model'
+  tier: 3
+  auto_only: false
+- id: exa-competitor_incident
+  name: Exa
+  type: exa
+  query: 'CDK Global, Reynolds and Reynolds or Dealertrack outage, cyberattack or lawsuit'
+  tier: 3
+  auto_only: false
 - id: gn-acquisition
   name: Google News
   url: 'https://news.google.com/rss/search?q=%28acquires+OR+acquisition+OR+buys%29+%28dealership+OR+%22dealer+group%22+OR+%22auto+group%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'

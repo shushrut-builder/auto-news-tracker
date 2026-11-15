@@ -45,6 +45,7 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           MODE: ${{ github.event.inputs.mode }}
           TO: ${{ github.event.inputs.to }}
         run: |
@@ -53,6 +54,7 @@ jobs:
           [ -z "$SMTP_PORT" ] && unset SMTP_PORT
           [ -z "$MAIL_FROM" ] && unset MAIL_FROM
           [ -z "$ANTHROPIC_API_KEY" ] && unset ANTHROPIC_API_KEY
+          [ -z "$EXA_API_KEY" ] && unset EXA_API_KEY
           if [ "$MODE" = "preview" ]; then
             python signals.py --preview
           elif [ "$MODE" = "send-now" ]; then
