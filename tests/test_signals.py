@@ -225,8 +225,8 @@ def route(regions=None, **t):
     ("oem_retail_strategy", "industry_trends"), ("regulation", "industry_trends"), ("market_trend", "industry_trends"),
     ("sales_shift", "industry_trends"), ("launch", "industry_trends"), ("oem_dms_certification", "industry_trends"),
     ("major_recall", None),
-    # Without us or a competitor named, these are left out.
-    ("competitor_incident", None), ("vendor_news", None),
+    # Without us or a competitor named: news about other dealer software companies is a trend.
+    ("competitor_incident", "industry_trends"), ("vendor_news", "industry_trends"),
 ])
 def test_routing_table(signal, section):
     assert route(signal=signal, companies=[{"name": "Smith Auto Group", "role": "subject"}]) == section
@@ -245,8 +245,9 @@ def test_routing_us_and_competitors():
 
 
 def test_account_news_needs_a_buyer():
-    # An insurer buying a warranty company is not a business that buys dealer software.
-    assert route(signal="acquisition", buyer=False, companies=[{"name": "Arch Insurance", "role": "acquirer"}]) is None
+    # An insurer buying a warranty company isn't a business that buys dealer software: an industry trend instead.
+    assert route(signal="acquisition", buyer=False, companies=[{"name": "Arch Insurance", "role": "acquirer"}]) == "industry_trends"
+    assert route(signal="tech_investment", buyer=False, companies=[{"name": "Toma", "role": "subject"}]) == "industry_trends"
     assert route(signal="acquisition", buyer=True, companies=[{"name": "Tom Wood Group", "role": "acquirer"}]) == "account_news"
     assert route(signal="acquisition", buyer=None, companies=[{"name": "Tom Wood Group", "role": "acquirer"}]) == "account_news"  # rules: unknown
     # Trends don't need a buyer.

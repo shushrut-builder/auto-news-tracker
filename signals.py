@@ -793,8 +793,9 @@ ROUTING = {
     "oem_dms_certification": "industry_trends", "oem_retail_strategy": "industry_trends", "sales_shift": "industry_trends",
     "launch": "industry_trends", "regulation": "industry_trends", "market_trend": "industry_trends",
     "major_recall": None,
-    # Shown only when they name us or a competitor (then they go to Tekion or Competitors).
-    "competitor_incident": None, "vendor_news": None,
+    # About Tekion or a listed competitor -> Tekion / Competitors (see route). Other dealer software companies
+    # (a voice-AI startup winning dealers, say) are a dealer-tech trend.
+    "competitor_incident": "industry_trends", "vendor_news": "industry_trends",
 }
 
 
@@ -826,7 +827,8 @@ def route(tag: dict, rules: dict, regions: list[str] | None = None) -> str | Non
     """Section for a tagged story, or None to leave it out.
     - About Tekion -> Tekion; about a competing provider -> Competitors. From any region.
     - A dealer choosing a competitor -> Account news, labelled with the dealer (it needs a named dealer).
-    - Account news needs a business that would buy dealer software (buyer), in the team's regions.
+    - Account news is for businesses that would buy dealer software (buyer). The same kind of news about any
+      other business (an insurer buying a warranty company, a tech startup raising money) goes to Industry trends.
     - Industry trends: market-wide developments in the team's regions."""
     if not tag["relevant"] or not tag["signal"]:
         return None
@@ -838,7 +840,7 @@ def route(tag: dict, rules: dict, regions: list[str] | None = None) -> str | Non
     if section is None or not in_regions(tag, regions):
         return None
     if section == "account_news" and tag.get("buyer") is False:
-        return None
+        return "industry_trends"
     if signal == "competitor_selected" and not dealer_name(tag, rules):
         return None
     return section
