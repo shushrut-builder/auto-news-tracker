@@ -284,17 +284,21 @@ def _cand(section, conf, companies=(), tier=2, matched=None, host="x.com"):
             "section": section, "matched": matched}
 
 
-def test_sections_gates_labels_and_caps():
-    out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9, ["Dealer Group D"], host="a.com"),
+def test_sections_labels_signal_order_and_caps():
+    out = S.rank([_cand("new_business", 0.9, ["Dealer Group D"], host="a.com"),
                   _cand("industry_development", 0.95, host="b.com")], RULES)
-    # Low confidence and background stories are left out; only prospects go to New accounts.
+    # Background stories are left out; only prospects go to New accounts.
     assert [c["lead"] for c in out["new_accounts"]] == ["Dealer Group D"] and out["existing_accounts"] == []
-    # Watchlist stories go to Existing accounts, labelled with the account and the event type.
+    # Watchlist stories go to Existing accounts, labelled company · region, ordered by sales signal.
     an = _cand("potential_risk", 0.9, matched="AutoNation")
-    an["tag"]["region"] = "North America"
-    out = S.rank([an, _cand("industry_development", 0.6, matched="Kia", host="a.com"),
-                  _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES)
-    assert [c["lead"] for c in out["existing_accounts"]] == ["AutoNation · North America", "Kia"]  # Ford below the gate; no region when unknown
+    an["tag"].update(region="North America", signal="closure")
+    kia = _cand("potential_growth", 0.4, matched="Kia", host="a.com")
+    kia["tag"]["signal"] = "competitor_selected"
+    ford = _cand("potential_risk", 0.95, matched="Ford", host="c.com")
+    ford["tag"]["signal"] = "major_recall"
+    out = S.rank([an, kia, ford], RULES)
+    # A competitor win comes before a closure, which comes before a recall, whatever the confidence.
+    assert [c["lead"] for c in out["existing_accounts"]] == ["Kia", "AutoNation · North America", "Ford"]
     many = [_cand("new_business", 0.9 - i / 100, host=f"h{i}.com") for i in range(9)]
     assert len(S.rank(many, RULES)["new_accounts"]) == 6
 
@@ -388,10 +392,6 @@ def _write_config(tmp_path, watchlist=True):
     import yaml
     raw = yaml.safe_load((ROOT / "rules.yaml").read_text(encoding="utf-8"))
     raw["sources"] = [{k: v for k, v in s.items() if k != "file"} for s in FIXTURE_SOURCES]
-    # The saved fixture day only has weak keyword-rule matches (confidence 0.5). Lower the gates so these
-    # whole-run tests send a real email with items, not a quiet-day line.
-    raw["settings"]["confidence_gate"] = 0.5
-    raw["settings"]["watchlist_confidence_gate"] = 0.4
     rules.write_text(yaml.safe_dump(raw))
     return cfg, rules
 

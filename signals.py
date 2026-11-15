@@ -931,22 +931,20 @@ def rank(candidates: list[dict], rules: dict) -> dict:
     - Existing accounts: every story about a watchlist name.
     - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions.
     - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
-    Then confidence gates, ordering, a per-outlet cap and section caps. Nothing is marked as a priority:
-    the team decides that."""
+    Within a section, items are ordered by sales signal (settings.signal_order), then a per-outlet cap
+    and section caps. Nothing is marked as a priority: the team decides that."""
     s = rules["settings"]
+    order = {sig: i for i, sig in enumerate(s.get("signal_order") or SIGNALS)}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
-        conf = c["tag"]["confidence"]
         c.setdefault("vendor", vendor_kind(c["tag"], rules))
         if c.get("matched"):
-            section, gate = "existing_accounts", s["watchlist_confidence_gate"]
+            section = "existing_accounts"
         elif c["vendor"]:
-            section, gate = "tekion_competitors", s["watchlist_confidence_gate"]
+            section = "tekion_competitors"
         elif c["section"] == "new_business":
-            section, gate = "new_accounts", s["confidence_gate"]
+            section = "new_accounts"
         else:
-            continue
-        if conf < gate:
             continue
         # Label: company · region (region left out when unknown).
         region = c["tag"].get("region") or ""
@@ -954,7 +952,7 @@ def rank(candidates: list[dict], rules: dict) -> dict:
         out[section].append(c)
     per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), -c["tag"]["confidence"],
+        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), order.get(c["tag"]["signal"], len(order)),
                                      c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept = []
         for c in out[sec]:

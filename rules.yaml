@@ -571,8 +571,23 @@ settings:
   max_lookback_hours: 72
   title_similarity: 0.75
   sent_memory_days: 14
-  confidence_gate: 0.7          # New accounts, and the Risk / Growth label on existing accounts
-  watchlist_confidence_gate: 0.5  # below this, even watchlist news is left out
+  # Order of items within each section: strongest sales signal first. Edit to re-rank.
+  signal_order:
+  - competitor_selected
+  - acquisition
+  - leadership_change
+  - tech_investment
+  - new_store
+  - market_entry
+  - closure
+  - oem_dms_certification
+  - oem_retail_strategy
+  - competitor_incident
+  - vendor_news
+  - regulation
+  - sales_shift
+  - launch
+  - major_recall
   max_per_outlet: 2             # at most this many items from one publication per email
   caps:
     existing_accounts: 10
