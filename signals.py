@@ -915,11 +915,11 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
             h.append(
                 f'<p style="margin:0 0 14px;">{"<strong>Priority:</strong> " if prio else ""}{html.escape(fact)}{html.escape(watch)} '
                 f'(<a href="{html.escape(story["url"], quote=True)}" style="color:#0b5cad;">{html.escape(story["publisher"])}</a>)'
-                + (f'<br><em style="color:#424a53;">Implication: {html.escape(impl)}</em>' if impl else "") + "</p>"
+                + (f'<br><em style="color:#424a53;">Why it matters: {html.escape(impl)}</em>' if impl else "") + "</p>"
             )
             t.append(f"- {prio}{fact}{watch} ({story['publisher']}: {story['url']})")
             if impl:
-                t.append(f"   Implication: {impl}")
+                t.append(f"   Why it matters: {impl}")
             t.append("")
     h.append(tail)
     return subject, "".join(h), "\n".join(t)

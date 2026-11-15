@@ -89,7 +89,7 @@ Tests:
 3. **Remove duplicates.** Three checks: the same link; the same story from another outlet (similar headline, or the same signal about the same companies); anything emailed in the last 14 days. The most credible source is kept: press release first, then trade press, then general news.
 4. **Tag.** With `ANTHROPIC_API_KEY` set, Claude Haiku 5.5 reads stories in batches of 20 and extracts the signal, the companies and their roles (who bought whom), a factual summary, an implication and a confidence score. Names it returns are checked against the article text. If the AI is off or a batch fails, keyword rules from `rules.yaml` tag that batch instead.
 5. **Route.** A fixed table decides each story's section from its signal and whether it involves a watchlist name. For example, a watched company buying stores is *Potential growth* and being bought is *Potential risk*; any other acquisition is *New business*. Low-confidence items drop to *Industry development*. A company with two or more stories in 30 days is marked **Priority**.
-6. **Email.** One template: each item is the fact with its source linked, then the implication on its own line. Empty sections are left out. A quiet day sends one line. After a missed day, the next email covers everything since the last one.
+6. **Email.** One template: each item is the fact with its source linked, then why it matters, on its own line. Empty sections are left out. A quiet day sends one line. After a missed day, the next email covers everything since the last one.
 
 ## When something goes wrong
 

@@ -253,7 +253,7 @@ Within a section, items are ordered by Priority, then confidence, source credibi
 | Industry development | Always | Top 3 |
 | Lower priority | Always | Top 3 |
 
-Each item is the fact with its source linked, then the implication on its own line. Empty sections are left out; a quiet day sends one line, because a missing email looks like a broken workflow. HTML and plain-text versions are built.
+Each item is the fact with its source linked, then why it matters, on its own line. Empty sections are left out; a quiet day sends one line, because a missing email looks like a broken workflow. HTML and plain-text versions are built.
 
 > **Subject:** Automotive market summary – Friday, 14 November
 >
@@ -263,11 +263,11 @@ Each item is the fact with its source linked, then the implication on its own li
 >
 > **Potential risk**
 > - Dealer Group B has appointed a new Chief Information Officer, previously with a competing group. Dealer Group B is on your watchlist. ([Trade Publication](https://example.com/1))
->   *Implication: incoming CIOs frequently review existing vendor relationships.*
+>   *Why it matters: incoming CIOs frequently review existing vendor relationships.*
 >
 > **New business**
 > - Priority: Dealer Group C has agreed to acquire a five-store group, its second acquisition this month. ([Trade Publication](https://example.com/3))
->   *Implication: groups expanding at this pace typically reassess how their stores are managed.*
+>   *Why it matters: groups expanding at this pace typically reassess how their stores are managed.*
 >
 > **Industry development**
 > - New consumer data regulations for dealers take effect in January. ([Trade Publication](https://example.com/4))
