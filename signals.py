@@ -37,11 +37,12 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 USER_AGENT = "auto-sales-signals/1.0"
 
-# The email has three sections: news about watchlist names (Existing accounts), prospect signals about anyone
-# else (New accounts), and news about us or a competing dealer software provider (Tekion and competitors).
-# Each item is labelled with the company and the type of event.
-SECTIONS = ["existing_accounts", "new_accounts", "tekion_competitors"]
-SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts", "tekion_competitors": "Tekion and competitors"}
+# The email has four sections: news about watchlist names (Existing accounts), prospect signals about anyone
+# else (New accounts), news about us or a competing dealer software provider (Tekion and competitors), and a
+# short list of market-wide developments (Industry trends). Each item is labelled company · region.
+SECTIONS = ["existing_accounts", "new_accounts", "tekion_competitors", "industry_trends"]
+SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts",
+                  "tekion_competitors": "Tekion and competitors", "industry_trends": "Industry trends"}
 # Regions a team can cover (config.yaml `regions`). The AI tags each story with one of these, or Global / Unknown.
 REGIONS = ["North America", "Europe", "India", "Middle East", "Asia Pacific", "Latin America", "Africa"]
 STORY_REGIONS = REGIONS + ["Global", "Unknown"]
@@ -50,7 +51,7 @@ REGION_HINTS = {"North America": "the United States or Canada", "Europe": "Europ
 SIGNALS = [
     "acquisition", "closure", "new_store", "market_entry", "competitor_selected", "leadership_change", "tech_investment",
     "oem_dms_certification", "oem_retail_strategy", "major_recall", "sales_shift", "launch",
-    "competitor_incident", "regulation", "vendor_news",
+    "competitor_incident", "regulation", "vendor_news", "market_trend",
 ]
 BRAND_SIGNALS = {"oem_dms_certification", "oem_retail_strategy", "major_recall", "sales_shift", "launch"}
 ROLES = ["acquirer", "target", "subject", "certified", "other"]
@@ -587,11 +588,12 @@ Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - oem_dms_certification: an OEM certifies or approves a dealer management system (DMS) vendor for its dealers. Mark the certified vendor with role "certified".
 - oem_retail_strategy: an OEM changes how its vehicles are sold (agency model, direct sales, dealer network changes, dealer standards). Set direction: "falling" if the change reduces the role or number of dealers (direct sales, agency model, network cuts), "rising" if it expands it.
 - major_recall: a large vehicle recall.
-- sales_shift: a notable rise or fall in a brand's or market's vehicle sales, registrations or market share. Set direction.
-- launch: a new model or EV launch, or a launch date announced.
+- sales_shift: a notable rise or fall in a whole market's vehicle sales, registrations or EV share (a country or segment, not one brand). One brand's own monthly sales release is relevant: false. Set direction.
+- launch: only a launch that changes how dealers sell or service: a new brand entering a market or choosing its dealers or sales channel, or a new EV line that needs new service tools or training. A routine model reveal, facelift, trim or concept car is relevant: false.
 Market signals:
 - competitor_incident: an outage, cyberattack, breach, lawsuit or regulatory action involving a competing dealer software provider.
 - regulation: a law, regulation, tariff or policy change affecting auto dealers or vehicle sales.
+- market_trend: industry-wide data or a study about auto retail: inventory levels, sales pace, used-vehicle prices, loan rates, dealer profitability, dealership deal volume or valuations, or a survey of how dealers use technology (AI, digital retail, cloud, cybersecurity). Not about one company.
 - vendor_news: other news about our company or a competing dealer software provider: a dealer or OEM choosing our company, product launches, partnerships, funding, acquisitions, pricing, layoffs or leadership changes. Name the provider as a company with role "subject"."""
 
 
@@ -616,7 +618,7 @@ Rules:
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one plain sentence of at most 35 words. No opinion, no implication.
 - implication: optional. Return an empty string unless there is something specific and useful to say about this event; most items need nothing. When there is, write one sentence of at most 30 words on what this event means for the companies involved. It may name which of our products fits the situation, but only when the link to this event is direct (for example, a group buying stores and moving them onto one system); never add a product mention just to have one. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
-- confidence: 0 to 1, your confidence that the signal, companies and roles are correct given only the text. Use below 0.6 when the text is thin or ambiguous.
+- confidence: 0 to 1, how clearly this is hot news: a specific, new event or fresh data point from the past few days, stated as fact, with the signal, companies and roles clear from the text. Use below 0.5 for general knowledge, explainers, how-to or advice pieces, opinion, predictions, evergreen features, or a rehash of known facts, and when the text is too thin to tell what happened.
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
 - region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
 - english: false if the title or snippet is not in English.
@@ -813,13 +815,14 @@ ROUTING = {
     "tech_investment": ("potential_growth", FALL, "new_business"),
     "oem_dms_certification": (FALL, _cert_brand, _cert_other),
     "oem_retail_strategy": (FALL, _retail, "industry_development"),
-    # Watched brands: only retail strategy, certification and network news. Launches, recalls and sales are left out.
+    # Recalls are left out. Launches and market sales go to Industry trends, even for a watched brand.
     "major_recall": (FALL, None, None),
-    "sales_shift": (FALL, None, "industry_development"),
-    "launch": (FALL, None, "industry_development"),
+    "sales_shift": (FALL, FALL, "industry_development"),
+    "launch": (FALL, FALL, "industry_development"),
     "competitor_incident": ("industry_development", "industry_development", "new_business"),
     "regulation": ("industry_development", "industry_development", "industry_development"),
     "vendor_news": ("industry_development", "industry_development", "industry_development"),
+    "market_trend": ("industry_development", "industry_development", "industry_development"),
 }
 ROLE_ORDER = ["acquirer", "target", "certified", "subject", "other"]
 
@@ -940,6 +943,9 @@ def rank(candidates: list[dict], rules: dict) -> dict:
     - Existing accounts: every story about a watchlist name.
     - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions,
       including a dealer choosing a competitor (labelled with the dealer).
+    - Industry trends: market-wide developments (retail model changes, regulation, market data, launches that
+      change dealer work), at most one per type.
+    Stories below the hot-news gate (general knowledge, explainers, opinion) are left out.
     - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
     Within a section, items are ordered by sales signal (settings.signal_order), then a per-outlet cap
     and section caps. Nothing is marked as a priority: the team decides that."""
@@ -947,6 +953,8 @@ def rank(candidates: list[dict], rules: dict) -> dict:
     order = {sig: i for i, sig in enumerate(s.get("signal_order") or SIGNALS)}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
+        if c["tag"]["confidence"] < s["hot_news_gate"]:
+            continue
         c.setdefault("vendor", vendor_kind(c["tag"], rules))
         if c.get("matched"):
             section = "existing_accounts"
@@ -960,6 +968,8 @@ def rank(candidates: list[dict], rules: dict) -> dict:
             section = "tekion_competitors"
         elif c["section"] == "new_business":
             section = "new_accounts"
+        elif c["section"] == "industry_development":
+            section = "industry_trends"
         else:
             continue
         # Label: company · region (region left out when unknown).
@@ -970,8 +980,12 @@ def rank(candidates: list[dict], rules: dict) -> dict:
     for sec in SECTIONS:
         out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), order.get(c["tag"]["signal"], len(order)),
                                      c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
-        kept = []
+        kept, types = [], set()
         for c in out[sec]:
+            if sec == "industry_trends":  # one item per type, so three launches can't fill the section
+                if c["tag"]["signal"] in types:
+                    continue
+                types.add(c["tag"]["signal"])
             host = c["story"]["publisher"] if c["story"].get("is_aggregator") else (urlsplit(c["story"]["url"]).hostname or c["story"]["publisher"])
             if per_outlet.get(host, 0) >= s["max_per_outlet"]:
                 continue

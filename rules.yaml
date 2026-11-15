@@ -276,6 +276,12 @@ sources:
   query: 'automaker changes dealer network or moves to agency sales model'
   tier: 3
   auto_only: false
+- id: exa-market_trend
+  name: Exa
+  type: exa
+  query: 'auto dealer industry report on inventory, sales pace, dealership valuations or dealer technology survey'
+  tier: 3
+  auto_only: false
 - id: exa-competitor_incident
   name: Exa
   type: exa
@@ -339,6 +345,12 @@ sources:
 - id: gn-oem_retail_strategy
   name: Google News
   url: 'https://news.google.com/rss/search?q=%28automaker+OR+OEM%29+%28%22agency+model%22+OR+%22direct+sales%22+OR+%22dealer+network%22+OR+%22retail+strategy%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-market_trend
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28%22days+supply%22+OR+%22dealer+survey%22+OR+%22dealership+valuations%22+OR+%22used+vehicle+prices%22+OR+SAAR%29+dealers+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
   type: google_news
   tier: 3
   auto_only: false
@@ -447,6 +459,9 @@ signals:
   major_recall:
     patterns:
     - '\brecall'
+  market_trend:
+    patterns:
+    - "days'? supply|inventory levels?|\bsaar\b|seasonally adjusted annual|sales pace|used.(car|vehicle) prices|(dealer|dealership) (profit|margin|valuation|sentiment)s?|blue sky (report|multiples?)|dealer survey|survey of (auto )?dealers|(dealers?|dealerships?) (plan|expect|say|report)\b"
   sales_shift:
     patterns:
     - '(sales|registrations|deliveries|market share).{0,40}(rise|rose|jump|surge|grow|up\b|climb|record|fall|fell|drop|decline|slump|down\b|plunge)'
@@ -576,14 +591,18 @@ settings:
   - competitor_incident
   - vendor_news
   - regulation
+  - market_trend
   - sales_shift
   - launch
   - major_recall
+  # 0-1. Below this the story reads as general knowledge, an explainer or opinion rather than hot news.
+  hot_news_gate: 0.6
   max_per_outlet: 2             # at most this many items from one publication per email
   caps:
     existing_accounts: 10
     new_accounts: 6
     tekion_competitors: 5
+    industry_trends: 3
   retry_hours: 3
   ai:
     model: claude-haiku-5-5

@@ -238,9 +238,10 @@ def route(**t):
     ("tech_investment", "potential_growth", "new_business", "new_business"),
     # A watched name named as the company in a brand story is a watchlist match too.
     ("oem_retail_strategy", "potential_growth", "potential_growth", "industry_development"),
-    # Watched brands: launches and recalls are left out.
+    # Recalls are left out; launches go to Industry trends, even for a watched brand.
     ("major_recall", None, None, None),
-    ("launch", None, None, "industry_development"),
+    ("launch", "industry_development", "industry_development", "industry_development"),
+    ("market_trend", "industry_development", "industry_development", "industry_development"),
     ("competitor_incident", "industry_development", "industry_development", "new_business"),
     ("regulation", "industry_development", "industry_development", "industry_development"),
 ])
@@ -262,7 +263,7 @@ def test_routing_certification_and_sales():
     assert route(signal="oem_dms_certification", brands=["Kia"], companies=cert("Tekion")) == "potential_growth"
     assert route(signal="oem_dms_certification", companies=cert("Tekion")) == "new_business"
     assert route(signal="oem_dms_certification", companies=cert("Other Vendor")) == "industry_development"
-    assert route(signal="sales_shift", brands=["Kia"], direction="falling") is None  # brand sales figures are left out
+    assert route(signal="sales_shift", brands=["Kia"], direction="falling") == "industry_development"  # market sales -> trends
 
 
 def test_routing_without_watchlist():
@@ -292,7 +293,7 @@ def test_sections_labels_signal_order_and_caps():
     # Watchlist stories go to Existing accounts, labelled company · region, ordered by sales signal.
     an = _cand("potential_risk", 0.9, matched="AutoNation")
     an["tag"].update(region="North America", signal="closure")
-    kia = _cand("potential_growth", 0.4, matched="Kia", host="a.com")
+    kia = _cand("potential_growth", 0.7, matched="Kia", host="a.com")
     kia["tag"]["signal"] = "competitor_selected"
     ford = _cand("potential_risk", 0.95, matched="Ford", host="c.com")
     ford["tag"]["signal"] = "major_recall"
@@ -396,6 +397,7 @@ def _write_config(tmp_path, watchlist=True):
     import yaml
     raw = yaml.safe_load((ROOT / "rules.yaml").read_text(encoding="utf-8"))
     raw["sources"] = [{k: v for k, v in s.items() if k != "file"} for s in FIXTURE_SOURCES]
+    raw["settings"]["hot_news_gate"] = 0.5  # the saved fixture day only has keyword-rule tags (confidence 0.5)
     rules.write_text(yaml.safe_dump(raw))
     return cfg, rules
 
@@ -550,3 +552,31 @@ def test_ai_refusal_counts_as_batch_failure():
 def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
     assert "Automotive Retail Cloud" in p and "implication: optional" in p
+
+
+def test_industry_trends_last_one_per_type_capped_and_gated():
+    def trend(signal, conf=0.9, host="t.com"):
+        c = _cand("industry_development", conf, host=host)
+        c["tag"]["signal"] = signal
+        return c
+    cands = [trend("launch", host="a.com"), trend("launch", 0.95, host="b.com"), trend("regulation", host="c.com"),
+             trend("market_trend", host="d.com"), trend("oem_retail_strategy", host="e.com"), trend("sales_shift", host="f.com")]
+    out = S.rank(cands, RULES)
+    sigs = [c["tag"]["signal"] for c in out["industry_trends"]]
+    assert sigs == ["oem_retail_strategy", "regulation", "market_trend"]  # signal order, one per type, at most 3
+    assert S.SECTIONS[-1] == "industry_trends"
+    # Not hot news (general knowledge, explainer, opinion): left out of every section.
+    assert S.rank([trend("regulation", 0.4)], RULES)["industry_trends"] == []
+    assert S.rank([_cand("new_business", 0.4, ["Dealer Group D"])], RULES)["new_accounts"] == []
+
+
+def test_a_day_with_only_trends_is_not_a_quiet_day():
+    import datetime as dt
+    c = _cand("industry_development", 0.9)
+    c["tag"]["signal"] = "regulation"
+    c["lead"] = "FTC · North America"
+    secs = {s: [] for s in S.SECTIONS}
+    secs["industry_trends"] = [c]
+    now = dt.datetime(2026, 11, 16, 8, tzinfo=dt.timezone.utc)
+    _, _, text = S.compose(secs, now, None, False, "Shushrut")
+    assert "Here's what happened" in text and "INDUSTRY TRENDS" in text and "Nothing relevant" not in text
