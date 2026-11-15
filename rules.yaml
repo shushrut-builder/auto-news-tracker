@@ -1,0 +1,491 @@
+# Daily Automotive Sales Signals: sources, keywords and thresholds.
+# Maintainers only. config.yaml holds the team settings (recipients, time, watchlist).
+#
+# sources: tier 1 = official/press releases, 2 = trade press, 3 = general news/aggregators.
+#          auto_only: true skips the "must look automotive" keyword check (the feed is all automotive).
+# prefilter.exclude / exclude_url: dropped as noise. prefilter.include: needed for auto_only: false sources.
+# signals: keyword rules used when AI is off or fails; first match wins, so order matters.
+us:
+  name: Tekion
+  aliases:
+  - Tekion Corp
+  - Tekion ARC
+competitors:
+- name: CDK Global
+  aliases:
+  - CDK
+- name: Reynolds and Reynolds
+  aliases:
+  - Reynolds
+- name: Dealertrack
+  aliases:
+  - Cox Automotive Dealertrack
+sources:
+- id: prn-auto
+  name: PR Newswire
+  url: 'https://www.prnewswire.com/rss/automotive-transportation-latest-news/automotive-transportation-latest-news-list.rss'
+  type: rss
+  tier: 1
+  auto_only: true
+- id: cbt-news
+  name: CBT News
+  url: 'https://www.cbtnews.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: auto-remarketing
+  name: Auto Remarketing
+  url: 'https://www.autoremarketing.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: automotive-dive
+  name: Automotive Dive
+  url: 'https://www.automotivedive.com/feeds/news/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: automotive-fleet
+  name: Automotive Fleet
+  url: 'https://www.automotive-fleet.com/rss'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: just-auto
+  name: Just Auto
+  url: 'https://www.just-auto.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: automotive-world
+  name: Automotive World
+  url: 'https://www.automotiveworld.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: motor-finance
+  name: Motor Finance
+  url: 'https://www.motorfinanceonline.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: car-dealer-mag
+  name: Car Dealer Magazine
+  url: 'https://www.cardealermagazine.co.uk/feed'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: electrive
+  name: electrive
+  url: 'https://www.electrive.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: autocar-pro
+  name: Autocar Professional
+  url: 'https://www.autocarpro.in/rssfeeds/news'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: rushlane
+  name: Rushlane
+  url: 'https://www.rushlane.com/feed'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: et-auto-industry
+  name: The Economic Times
+  url: 'https://economictimes.indiatimes.com/industry/auto/rssfeeds/13359412.cms'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: the-national
+  name: The National
+  url: 'https://www.thenationalnews.com/arc/outboundfeeds/rss/category/business/?outputType=xml'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: carnewschina
+  name: CarNewsChina
+  url: 'https://www.carnewschina.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: cnevpost
+  name: CnEVPost
+  url: 'https://cnevpost.com/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: prn-mergers
+  name: PR Newswire
+  url: 'https://www.prnewswire.com/rss/financial-services-latest-news/acquisitions-mergers-and-takeovers-list.rss'
+  type: rss
+  tier: 1
+  auto_only: false
+- id: fedreg-nhtsa
+  name: Federal Register
+  url: 'https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=national-highway-traffic-safety-administration&order=newest'
+  type: rss
+  tier: 1
+  auto_only: true
+- id: fedreg-ftc
+  name: Federal Register
+  url: 'https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=federal-trade-commission&order=newest'
+  type: rss
+  tier: 1
+  auto_only: false
+- id: smmt
+  name: SMMT
+  url: 'https://www.smmt.co.uk/feed/'
+  type: rss
+  tier: 1
+  auto_only: true
+- id: dealership-guy
+  name: Dealership Guy
+  url: 'https://www.dealershipguy.com/feed'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: motor-trader
+  name: Motor Trader
+  url: 'https://www.motortrader.com/feed'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: canadian-auto-dealer
+  name: Canadian Auto Dealer
+  url: 'https://www.canadianautodealer.ca/feed/'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: autocar-pro-analysis
+  name: Autocar Professional
+  url: 'https://www.autocarpro.in/rssfeeds/analysis'
+  type: rss
+  tier: 2
+  auto_only: true
+- id: businessline
+  name: BusinessLine
+  url: 'https://www.thehindubusinessline.com/companies/feeder/default.rss'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: yonhap
+  name: Yonhap
+  url: 'https://en.yna.co.kr/RSS/news.xml'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: korea-herald
+  name: The Korea Herald
+  url: 'https://www.koreaherald.com/rss/newsAll'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: japan-times
+  name: The Japan Times
+  url: 'https://www.japantimes.co.jp/feed/'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: khaleej-times
+  name: Khaleej Times
+  url: 'https://www.khaleejtimes.com/stories.rss'
+  type: rss
+  tier: 3
+  auto_only: false
+- id: nhtsa-recalls
+  name: NHTSA
+  url: 'https://data.transportation.gov/resource/6axg-epim.json'
+  type: nhtsa
+  tier: 1
+  auto_only: true
+  min_affected: 10000
+- id: gn-acquisition
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28acquires+OR+acquisition+OR+buys%29+%28dealership+OR+%22dealer+group%22+OR+%22auto+group%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-closure
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=dealership+%28closes+OR+closing+OR+closure+OR+%22loses+franchise%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-new_store
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%22opens+new%22+%28dealership+OR+showroom%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-market_entry
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28automaker+OR+carmaker%29+%28%22enters%22+OR+%22market+entry%22+OR+%22appoints+distributor%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-competitor_selected
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28dealer+OR+dealership%29+%28selects+OR+chooses+OR+%22rolls+out%22%29+%28CDK+OR+Reynolds+OR+Dealertrack%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-leadership_change
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%22dealer+group%22+OR+%22auto+group%22+%28appoints+OR+names%29+%28CEO+OR+CIO+OR+CTO+OR+president%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-tech_investment
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=dealership+%28software+OR+%22digital+retail%22+OR+AI%29+investment+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-oem_dms_certification
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%22dealer+management+system%22+%28certified+OR+certification+OR+approved%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-oem_retail_strategy
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28automaker+OR+OEM%29+%28%22agency+model%22+OR+%22direct+sales%22+OR+%22dealer+network%22+OR+%22retail+strategy%22%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-sales_shift
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28car+OR+vehicle%29+sales+%28rise+OR+fall+OR+jump+OR+decline%29+month+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-launch
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28launches+OR+unveils%29+new+%28EV+OR+SUV+OR+model%29+dealers+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-competitor_incident
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=%28CDK+OR+%22Reynolds+and+Reynolds%22+OR+Dealertrack%29+%28outage+OR+cyberattack+OR+lawsuit+OR+breach%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-regulation
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=auto+dealers+%28regulation+OR+rule+OR+law+OR+tariff%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+prefilter:
+  exclude:
+  - '\breview\b'
+  - test drive
+  - '\bfirst drive\b'
+  - 'motorsport|formula 1|\bf1\b|nascar|grand prix|\bindycar\b|rally\b'
+  - '\bbest\b.{0,40}\b(of|for|to buy)\b'
+  - '\b(lease|financing) deals?\b|\bprice cut\b|\bdeals? (of|on) the\b|\bdiscounts?\b'
+  - 'celebrity|kardashian|spotted driving'
+  - '\bhoroscope\b|\bcricket\b|\bfootball\b'
+  - 'roundup|round-up|newscast|week in review|news wrap|daily brief|morning brief|\bpodcast\b|\bwebinar\b'
+  - '^(watch|video|photos?|gallery)\b'
+  - 'information collection activities|sunshine act|performance review board|privacy act of 1974|meeting notice|\| daily dealer live|\blive:'
+  - '\bspied\b|\bspotted\b|spy shots?|leaked images|\bteased\b|\bteaser\b|\bviral\b|tiktok|youtuber|repair bill|\b(man|woman|owner|driver) (buys|bought|finds|discovers|sues|spends)\b'
+  include:
+  - 'dealer|dealership|dealer group|auto group|automotive group|showroom|rooftop'
+  - 'automaker|carmaker|\boem\b|auto ?maker|automotive|auto industry|auto sector|car market|vehicle market'
+  - '\bdms\b|dealer management|dealer software|automotive retail'
+  - '\b(vehicle|car|auto|suv|truck)s? recalls?|recalls? .{0,40}\b(vehicles|cars|suvs|trucks|pickups)\b'
+  - '\bev\b|\bevs\b|electric vehicle|electric suv|electric car|hybrid vehicle'
+  - '(car|vehicle|auto|passenger vehicle|two-wheeler|motorcycle) (sales|registrations|deliveries|exports)'
+  - '\bnhtsa\b|motor vehicle|fmvss|\bsmmt\b|\bfada\b|\bsiam\b'
+  - 'CDK|Reynolds|Dealertrack|Tekion|Cox Automotive'
+  - '\b(Toyota|Lexus|Honda|Nissan|Mazda|Subaru|Suzuki|Mitsubishi Motors|Isuzu|Hyundai|Kia|Genesis Motor|Ford|General Motors|GM|Chevrolet|Stellantis|Jeep|Tesla|Rivian|BMW|Mercedes|Volkswagen|Audi|Porsche|Volvo
+    Cars|Renault|Jaguar Land Rover|JLR|Tata Motors|Mahindra|Maruti|Ashok Leyland|Hero MotoCorp|Bajaj Auto|TVS Motor|BYD|Geely|Chery|MG Motor|Al-Futtaim|Abdul Latif Jameel|Al Tayer|Juffali)\b'
+  exclude_url:
+  - 'newscast|roundup|round-up|week-in-review|podcast|webinar|/video/|/videos/'
+signals:
+  oem_dms_certification:
+    patterns:
+    - '(certif|approv|endorse)\w*.{0,60}\b(dms|dealer management)'
+    - '\b(dms|dealer management).{0,60}(certif|approv|endorse)'
+    implication: 'OEM certification determines which dealer management systems that brand''s dealers can adopt.'
+  competitor_incident:
+    patterns:
+    - '(CDK|Reynolds|Dealertrack).{0,80}(outage|cyber|hack|breach|ransomware|lawsuit|antitrust|settle)'
+    - '(outage|cyberattack|breach|ransomware).{0,80}(CDK|Reynolds|Dealertrack)'
+    implication: Incidents at a competing provider often prompt affected dealers to review their software vendor.
+  competitor_selected:
+    patterns:
+    - '(selects?|chooses?|signs?|partners? with|deploys?|rolls? out|implements?|migrates? to|switch\w* to).{0,60}(CDK|Reynolds|Dealertrack)'
+    implication: A multi-year commitment to a competing platform reduces near-term switching opportunity.
+  acquisition:
+    patterns:
+    - '\b(acquir\w*|buys|bought|purchase[sd]?|takes over|completes purchase of)\b.{0,60}\b(dealerships?|dealer|stores?|group|rooftops?|stake|company|business|franchises?|automotive|motors|auto|cadillac|toyota|honda|ford|chevrolet|nissan|hyundai|kia|bmw|mercedes|lexus|jeep|subaru|mazda|volkswagen|audi|porsche)\b'
+    - '\bmerger\b|\bmerges? with\b|takeover|to be acquired|acquired by|sells? .{0,40}(dealership|stores|group)'
+    implication: Ownership changes typically lead to a review of the systems used across the combined stores.
+  closure:
+    patterns:
+    - '\bclos(e|es|ed|ing|ure)\b.{0,60}(dealership|store|showroom|plant)'
+    - '(dealership|store|showroom).{0,60}\bclos(e|es|ed|ing|ure)\b'
+    - '(los(es|t)|terminat\w+|drop\w*).{0,40}franchise'
+    - '\bbankrupt|\binsolven'
+    implication: Closures and lost franchises reduce the number of stores relying on existing systems.
+  new_store:
+    patterns:
+    - '\bopens?\b.{0,60}(dealership|store|showroom|location|rooftop)'
+    - '(new|opening).{0,20}(dealership|showroom|store)\b'
+    - 'groundbreaking|breaks ground'
+    implication: 'New stores need systems configured from day one, which often prompts a technology decision.'
+  market_entry:
+    patterns:
+    - '(enters?|entry into|enter the|launch\w* in|debut\w* in).{0,60}(market|india|us\b|u\.s\.|uk\b|europe|middle east|uae|saudi|japan|korea)'
+    - '(appoints?|names?|signs?).{0,60}(distributor|importer)'
+    - 'distribution (agreement|partner)'
+    implication: Market entries create new dealer networks that need retail systems in place.
+  leadership_change:
+    patterns:
+    - '(appoints?|names?|hires?|promotes?|taps?)\b.{0,80}\b(ceo|cio|cto|cfo|coo|president|chief|head of|vice president|vp|director)\b'
+    - '\b(ceo|cio|cto|cfo|president)\b.{0,40}(steps down|resigns|retires|departs|to step down)'
+    implication: Incoming executives frequently review existing vendor relationships.
+  tech_investment:
+    patterns:
+    - '(invests?|investment|funding|raises?|partners? with|digital retail|digitali[sz]|modernis|moderniz|\bai\b|software|platform).{0,60}(dealer|retail|store|showroom)'
+    - '(dealer|retail).{0,40}(technology|software|platform|digital)'
+    implication: Technology investment signals openness to evaluating new retail and operations software.
+  major_recall:
+    patterns:
+    - '\brecall'
+    implication: Large recalls bring service volume into dealer workshops and test service operations.
+  sales_shift:
+    patterns:
+    - '(sales|registrations|deliveries|market share).{0,40}(rise|rose|jump|surge|grow|up\b|climb|record|fall|fell|drop|decline|slump|down\b|plunge)'
+    - '(rise|rose|jump|surge|grow|fall|fell|drop|decline|slump|plunge).{0,40}(sales|registrations|deliveries)'
+    rising: 'rise|rose|jump|surge|grow|grew|up\b|climb|record|gain'
+    implication: Shifts in brand volume change dealer throughput and the operational load on their systems.
+  oem_retail_strategy:
+    patterns:
+    - 'agency (model|sales)'
+    - 'direct.to.consumer|direct sales|online sales|digital retail|omnichannel'
+    - '(dealer network|retail network|retail strategy|dealer strategy|dealer standards)'
+    implication: 'Changes to an OEM''s retail model reshape how its dealers sell and which systems they need.'
+  launch:
+    patterns:
+    - '\blaunch(es|ed)?\b'
+    - '\bunveil'
+    - '\bdebut'
+    - '\bintroduc\w+ .{0,30}(model|suv|ev|sedan|truck)'
+    - 'all-new|new (model|ev|suv)'
+    implication: 'New models bring new inventory, pricing and service processes to the brand''s dealers.'
+  regulation:
+    patterns:
+    - 'regulat|\bpolicy\b|\b(new|state|federal|proposed) (law|bill)s?\b|\b(new|final|proposed|federal|ftc|cars|safeguards) rules?\b|\bftc\b|\bmandate\b|tariff|import duty|\bcompliance\b|emission standard'
+    implication: Regulatory changes alter dealer compliance obligations and the systems that support them.
+# Names that contain a car brand but are a different business. Removed before brand matching,
+# so "HD Hyundai" (shipbuilding) or "Hyundai Home Shopping" don't count as Hyundai.
+brand_exclude:
+- 'HD Hyundai|Hyundai (Heavy|Home Shopping|Department Store|Engineering|E&C|Steel|Construction|Marine|Card|Capital|Elevator|Glovis|Rotem|Bioscience|Oilbank|Livart)'
+- 'Honda (Aircraft|Jet|Power Equipment|Marine)'
+- 'Toyota (Tsusho|Industries|Boshoku)|Ford Foundation|Kia Tigers|Genesis (BBQ|Energy|Healthcare)|Mini (bar|mum|market)s?\b|Tata (Steel|Consultancy|Power|Sons|Consumer|Chemicals)|TCS\b|Mahindra (Logistics|Finance|Lifespace|Holidays)'
+brands:
+- Toyota
+- Lexus
+- Honda
+- Acura
+- Ford
+- Lincoln
+- Chevrolet
+- GMC
+- Buick
+- Cadillac
+- General Motors
+- GM
+- Stellantis
+- Jeep
+- Ram
+- Dodge
+- Chrysler
+- Fiat
+- Peugeot
+- Citroen
+- Opel
+- Vauxhall
+- Nissan
+- Infiniti
+- Hyundai
+- Kia
+- Genesis
+- BMW
+- Mini
+- Mercedes-Benz
+- Mercedes
+- Audi
+- Volkswagen
+- VW
+- Porsche
+- Skoda
+- Seat
+- Cupra
+- Volvo
+- Polestar
+- Subaru
+- Mazda
+- Mitsubishi
+- Suzuki
+- Maruti Suzuki
+- Tata Motors
+- Mahindra
+- Tesla
+- Rivian
+- Lucid
+- BYD
+- Geely
+- MG
+- Jaguar
+- Land Rover
+- JLR
+- Renault
+- Dacia
+- Isuzu
+- Chery
+- Great Wall
+- Haval
+- Xpeng
+- Nio
+- Li Auto
+- Zeekr
+- Leapmotor
+- Vinfast
+- Scout
+- Lamborghini
+- Ferrari
+- Maserati
+- Alfa Romeo
+- Bentley
+- Rolls-Royce
+settings:
+  fetch:
+    timeout_seconds: 8
+    retries: 2
+    workers: 10
+  lookback_hours: 24
+  max_lookback_hours: 72
+  title_similarity: 0.75
+  sent_memory_days: 14
+  confidence_gate: 0.7
+  priority:
+    min_signals: 2
+    window_days: 30
+  caps:
+    new_business: 5
+    industry_development: 3
+    lower_priority: 3
+  retry_hours: 3
+  ai:
+    model: claude-haiku-5-5
+    batch_size: 20
+    max_tokens: 8000
+    effort: low

@@ -1,0 +1,24 @@
+# Daily Automotive Sales Signals: team settings. This is the only file most people need to edit.
+
+# Everyone below gets the same email. Any address works (Gmail, Outlook, Microsoft 365, lists).
+recipients:
+  - sales-team@example.com
+
+# When the email goes out: local hour (0-23) in this timezone.
+send_hour: 8
+timezone: America/Chicago
+
+# Optional. Companies or brands to watch, one per line, aliases after a bar.
+# News about them goes into "Potential risk" / "Potential growth". Delete the list to turn this off.
+watchlist:
+  - AutoNation | AutoNation USA
+  - Lithia Motors | Lithia, Lithia & Driveway, Driveway
+  - Penske Automotive Group | Penske Automotive
+  - Group 1 Automotive | Group 1
+  - Sonic Automotive | EchoPark
+  - Asbury Automotive Group | Asbury Automotive, Asbury
+  - Toyota
+  - Honda
+  - Ford
+  - Hyundai
+  - Kia
