@@ -18,6 +18,16 @@
    "mode": "send",
    "recipients": 1,
    "status": "ok"
+  },
+  {
+   "at": "2026-11-15T16:17:45.316515+00:00",
+   "failed_sources": [
+    "khaleej-times"
+   ],
+   "items": 6,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok"
   }
  ],
  "sent_items": []
