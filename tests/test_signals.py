@@ -59,11 +59,6 @@ def tag(**over):
 
 # ---------------------------------------------------------------- config
 
-def test_watchlist_parsing():
-    w = S.parse_watchlist(["AutoNation | AutoNation USA, AN", "", "Toyota", "toyota"])
-    assert w == [{"name": "AutoNation", "aliases": ["AutoNation USA", "AN"]}, {"name": "Toyota", "aliases": []}]
-
-
 def test_config_validation(tmp_path):
     bad = tmp_path / "c.yaml"
     bad.write_text("recipients: [not-an-email]\nsend_hour: 8\ntimezone: America/Chicago\n", encoding="utf-8")
@@ -77,7 +72,7 @@ def test_config_validation(tmp_path):
         S.load_config(bad)
     ok = tmp_path / "ok.yaml"
     ok.write_text("recipients: [a@b.com]\nsend_hour: 8\ntimezone: Asia/Kolkata\n", encoding="utf-8")
-    assert S.load_config(ok)["watchlist"] == []  # the watchlist is optional
+    assert S.load_config(ok)["regions"] == []  # regions are optional
 
 
 # ---------------------------------------------------------------- cleaning
@@ -181,7 +176,7 @@ def test_exa_searches_skipped_without_key_and_failures_dont_stop_the_run(monkeyp
 
 # ---------------------------------------------------------------- keyword rules
 
-CTX =S.RulesContext(RULES, S.parse_watchlist(["Lithia Motors | Lithia", "AutoNation", "Hyundai", "Toyota"]))
+CTX = S.RulesContext(RULES)
 
 
 def _story(title, snippet=""):
@@ -193,9 +188,9 @@ def test_rules_acquirer_and_target():
     assert t["signal"] == "acquisition"
     roles = {c["name"]: c["role"] for c in t["companies"]}
     assert roles["Lithia Motors"] == "acquirer" and roles["Smith Auto Group"] == "target"
-    t = S.classify_rules(_story("Smith Auto Group acquired by AutoNation"), CTX)
+    t = S.classify_rules(_story("Smith Auto Group acquired by Penske Automotive Group"), CTX)
     roles = {c["name"]: c["role"] for c in t["companies"]}
-    assert roles["AutoNation"] == "acquirer" and roles["Smith Auto Group"] == "target"
+    assert roles["Penske Automotive Group"] == "acquirer" and roles["Smith Auto Group"] == "target"
 
 
 def test_rules_confidence():
@@ -206,7 +201,6 @@ def test_rules_confidence():
 def test_rules_ignore_brand_lookalikes():
     t = S.classify_rules(_story("HD Hyundai launches autonomous vessel with Anduril"), CTX)
     assert "Hyundai" not in t["brands"]
-    assert not S.match_watchlist(t, CTX_WATCH)[0] and not S.match_watchlist(t, CTX_WATCH)[1]
 
 
 def test_rules_regulation_is_not_any_rule():
@@ -219,144 +213,103 @@ def test_rules_sales_direction():
     assert S.classify_rules(_story("Nissan sales fall 9% in October"), CTX)["direction"] == "falling"
 
 
-# ---------------------------------------------------------------- routing (every cell)
+# ---------------------------------------------------------------- routing
 
-CTX_WATCH = S.parse_watchlist(["AutoNation | AutoNation USA", "Kia"])
-
-
-def route(**t):
-    r = S.route(tag(**t), CTX_WATCH, RULES)
-    return r[0] if r else None
+def route(regions=None, **t):
+    return S.route(tag(**t), RULES, regions)
 
 
-@pytest.mark.parametrize("signal,watched_company,watched_brand,other", [
-    ("closure", "potential_risk", "lower_priority", "lower_priority"),
-    ("new_store", "potential_growth", "new_business", "new_business"),
-    ("market_entry", "potential_growth", "new_business", "new_business"),
-    ("competitor_selected", "potential_risk", "lower_priority", "lower_priority"),
-    ("leadership_change", "potential_risk", "new_business", "new_business"),
-    ("tech_investment", "potential_growth", "new_business", "new_business"),
-    # A watched name named as the company in a brand story is a watchlist match too.
-    ("oem_retail_strategy", "potential_growth", "potential_growth", "industry_development"),
-    # Recalls are left out; launches go to Industry trends, even for a watched brand.
-    ("major_recall", None, None, None),
-    ("launch", "industry_development", "industry_development", "industry_development"),
-    ("market_trend", "industry_development", "industry_development", "industry_development"),
-    ("competitor_incident", "industry_development", "industry_development", "new_business"),
-    ("regulation", "industry_development", "industry_development", "industry_development"),
+@pytest.mark.parametrize("signal,section", [
+    ("acquisition", "account_news"), ("closure", "account_news"), ("new_store", "account_news"),
+    ("market_entry", "account_news"), ("leadership_change", "account_news"), ("tech_investment", "account_news"),
+    ("oem_retail_strategy", "industry_trends"), ("regulation", "industry_trends"), ("market_trend", "industry_trends"),
+    ("sales_shift", "industry_trends"), ("launch", "industry_trends"), ("oem_dms_certification", "industry_trends"),
+    ("major_recall", None),
+    # Without us or a competitor named, these are left out.
+    ("competitor_incident", None), ("vendor_news", None),
 ])
-def test_routing_table(signal, watched_company, watched_brand, other):
-    assert route(signal=signal, companies=[{"name": "AutoNation", "role": "subject"}]) == watched_company
-    assert route(signal=signal, brands=["Kia"]) == watched_brand
-    assert route(signal=signal, companies=[{"name": "Someone Else", "role": "subject"}]) == other
+def test_routing_table(signal, section):
+    assert route(signal=signal, companies=[{"name": "Smith Auto Group", "role": "subject"}]) == section
 
 
-def test_routing_acquisition_direction_matters():
-    assert route(companies=[{"name": "AutoNation", "role": "acquirer"}]) == "potential_growth"
-    assert route(companies=[{"name": "AutoNation USA", "role": "target"}]) == "potential_risk"  # alias
-    assert route(companies=[{"name": "Other Co", "role": "acquirer"}]) == "new_business"
+def test_routing_us_and_competitors():
+    assert route(signal="vendor_news", companies=[{"name": "Tekion", "role": "subject"}]) == "tekion"
+    assert route(signal="competitor_incident", companies=[{"name": "CDK", "role": "subject"}]) == "competitors"
+    assert route(signal="oem_dms_certification", companies=[{"name": "Tekion", "role": "certified"}]) == "tekion"
+    assert route(signal="oem_dms_certification", companies=[{"name": "CDK Global", "role": "certified"}]) == "competitors"
+    # A dealer choosing a competitor is account news about the dealer, and needs a named dealer.
+    win = [{"name": "Smith Auto Group", "role": "subject"}, {"name": "Reynolds and Reynolds", "role": "subject"}]
+    assert route(signal="competitor_selected", companies=win) == "account_news"
+    assert route(signal="competitor_selected", companies=win[1:]) is None
+    assert route(relevant=False, signal=None) is None
 
 
-def test_routing_certification_and_sales():
-    cert = lambda n: [{"name": n, "role": "certified"}]  # noqa: E731
-    assert route(signal="oem_dms_certification", brands=["Kia"], companies=cert("CDK Global")) == "potential_risk"
-    assert route(signal="oem_dms_certification", brands=["Kia"], companies=cert("Tekion")) == "potential_growth"
-    assert route(signal="oem_dms_certification", companies=cert("Tekion")) == "new_business"
-    assert route(signal="oem_dms_certification", companies=cert("Other Vendor")) == "industry_development"
-    assert route(signal="sales_shift", brands=["Kia"], direction="falling") == "industry_development"  # market sales -> trends
+def test_account_news_needs_a_buyer():
+    # An insurer buying a warranty company is not a business that buys dealer software.
+    assert route(signal="acquisition", buyer=False, companies=[{"name": "Arch Insurance", "role": "acquirer"}]) is None
+    assert route(signal="acquisition", buyer=True, companies=[{"name": "Tom Wood Group", "role": "acquirer"}]) == "account_news"
+    assert route(signal="acquisition", buyer=None, companies=[{"name": "Tom Wood Group", "role": "acquirer"}]) == "account_news"  # rules: unknown
+    # Trends don't need a buyer.
+    assert route(signal="regulation", buyer=False) == "industry_trends"
 
 
-def test_routing_without_watchlist():
-    r = S.route(tag(signal="closure", companies=[{"name": "AutoNation", "role": "subject"}]), [], RULES)
-    assert r == ("lower_priority", None)
-    assert S.route(tag(relevant=False, signal=None), [], RULES) is None
-
-
-def test_routing_reports_matched_name():
-    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"]), CTX_WATCH, RULES) == ("potential_growth", "Kia")
+def test_regions():
+    na = ["North America"]
+    assert route(na, signal="acquisition", region="Asia Pacific") is None
+    assert route(na, signal="launch", region="Europe") is None
+    for r in ("North America", "Global", "Unknown"):
+        assert route(na, signal="acquisition", region=r) == "account_news"
+    assert route(None, signal="acquisition", region="Asia Pacific") == "account_news"  # no regions set: everything
+    # Competitor and Tekion news counts from anywhere, but a foreign dealer choosing a competitor doesn't.
+    assert route(na, signal="vendor_news", region="Europe", companies=[{"name": "Keyloop", "role": "subject"}]) == "competitors"
+    far = [{"name": "Euro Motors", "role": "subject"}, {"name": "Keyloop", "role": "subject"}]
+    assert route(na, signal="competitor_selected", region="Europe", companies=far) is None
 
 
 # ---------------------------------------------------------------- ranking
 
-def _cand(section, conf, companies=(), tier=2, matched=None, host="x.com"):
-    st = _item(f"story {conf} {section} {companies}", f"https://{host}/{section}{conf}{companies}", tier=tier)
+def _cand(section, conf, companies=(), tier=2, host="x.com", signal="acquisition"):
+    st = _item(f"story {conf} {section} {companies} {host}", f"https://{host}/{section}{conf}{companies}", tier=tier)
     st["outlets"] = 1
-    return {"story": st, "tag": tag(confidence=conf, companies=[{"name": c, "role": "subject"} for c in companies]),
-            "section": section, "matched": matched}
+    return {"story": st, "tag": tag(confidence=conf, signal=signal, companies=[{"name": c, "role": "subject"} for c in companies]),
+            "section": section}
 
 
-def test_sections_labels_signal_order_and_caps():
-    out = S.rank([_cand("new_business", 0.9, ["Dealer Group D"], host="a.com"),
-                  _cand("industry_development", 0.95, host="b.com")], RULES)
-    # Background stories are left out; only prospects go to New accounts.
-    assert [c["lead"] for c in out["new_accounts"]] == ["Dealer Group D"] and out["existing_accounts"] == []
-    # Watchlist stories go to Existing accounts, labelled company · region, ordered by sales signal.
-    an = _cand("potential_risk", 0.9, matched="AutoNation")
-    an["tag"].update(region="North America", signal="closure")
-    kia = _cand("potential_growth", 0.7, matched="Kia", host="a.com")
-    kia["tag"]["signal"] = "competitor_selected"
-    ford = _cand("potential_risk", 0.95, matched="Ford", host="c.com")
-    ford["tag"]["signal"] = "major_recall"
-    out = S.rank([an, kia, ford], RULES)
-    # A competitor win comes before a closure, which comes before a recall, whatever the confidence.
-    assert [c["lead"] for c in out["existing_accounts"]] == ["Kia", "AutoNation · North America", "Ford"]
-    many = [_cand("new_business", 0.9 - i / 100, host=f"h{i}.com") for i in range(9)]
-    assert len(S.rank(many, RULES)["new_accounts"]) == 6
+def test_section_order_labels_signal_order_and_caps():
+    assert S.SECTIONS == ["industry_trends", "account_news", "competitors", "tekion"]
+    a = _cand("account_news", 0.9, ["AutoNation"], signal="closure")
+    a["tag"]["region"] = "North America"
+    b = _cand("account_news", 0.7, ["Kia"], host="a.com", signal="new_store")
+    c = _cand("account_news", 0.95, ["Ford"], host="c.com", signal="leadership_change")
+    out = S.rank([a, b, c], RULES)
+    # Ordered by sales signal, whatever the confidence; labelled company · region.
+    assert [x["lead"] for x in out["account_news"]] == ["Kia", "Ford", "AutoNation · North America"]
+    many = [_cand("account_news", 0.9 - i / 100, host=f"h{i}.com") for i in range(12)]
+    assert len(S.rank(many, RULES)["account_news"]) == 8
 
 
-def test_tekion_and_competitor_news_has_its_own_section():
-    def vendor(name, signal, conf=0.9, host="v.com"):
-        c = _cand("industry_development", conf, host=host)
-        c["tag"] = tag(signal=signal, confidence=conf, companies=[{"name": name, "role": "subject"}])
+def test_competitors_and_tekion_have_their_own_sections():
+    def vendor(name, signal, section, host):
+        c = _cand(section, 0.9, host=host, signal=signal)
+        c["tag"]["companies"] = [{"name": name, "role": "subject"}]
         return c
-    win = vendor("Reynolds and Reynolds", "competitor_selected", host="y.com")
+    win = vendor("Reynolds and Reynolds", "competitor_selected", "account_news", "y.com")
     win["tag"]["companies"].insert(0, {"name": "Smith Auto Group", "role": "subject"})
-    cands = [vendor("CDK", "competitor_incident"), vendor("Tekion", "vendor_news", host="w.com"), win]
-    out = S.rank(cands, RULES)
-    assert [c["lead"] for c in out["tekion_competitors"]] == ["Tekion", "CDK Global"]  # our own news first
-    # A dealer choosing a competitor is a new account, labelled with the dealer.
-    assert [c["lead"] for c in out["new_accounts"]] == ["Smith Auto Group"] and out["existing_accounts"] == []
-    # It follows the team's regions like other prospects.
-    far = tag(signal="competitor_selected", region="Europe",
-              companies=[{"name": "Euro Motors", "role": "subject"}, {"name": "Keyloop", "role": "subject"}])
-    assert S.route(far, CTX_WATCH, RULES, ["North America"]) is None
-    # From any region: a competitor's news abroad still counts.
-    t_ = tag(signal="vendor_news", companies=[{"name": "Keyloop", "role": "subject"}], region="Europe")
-    assert S.route(t_, CTX_WATCH, RULES, ["North America"]) is not None
+    out = S.rank([vendor("CDK", "competitor_incident", "competitors", "v.com"),
+                  vendor("Tekion", "vendor_news", "tekion", "w.com"), win], RULES)
+    assert [c["lead"] for c in out["competitors"]] == ["CDK Global"]
+    assert [c["lead"] for c in out["tekion"]] == ["Tekion"]
+    assert [c["lead"] for c in out["account_news"]] == ["Smith Auto Group"]  # labelled with the dealer
 
 
 def test_at_most_two_items_per_outlet():
-    same = [_cand("new_business", 0.9 - i / 100, host="theedgemalaysia.com") for i in range(5)]
-    assert len(S.rank(same, RULES)["new_accounts"]) == 2
+    same = [_cand("account_news", 0.9 - i / 100, host="theedgemalaysia.com") for i in range(5)]
+    assert len(S.rank(same, RULES)["account_news"]) == 2
 
 
 def test_nothing_is_marked_priority():
-    out = S.rank([_cand("new_business", 0.8, ["Busy Group"]), _cand("new_business", 0.9, ["Busy Group"], host="a.com")], RULES)
-    assert all("priority" not in c for c in out["new_accounts"])
-
-
-def test_passing_mention_is_not_a_watchlist_match():
-    t_ = tag(signal="acquisition", companies=[{"name": "Maroone Group", "role": "acquirer"}, {"name": "AutoNation", "role": "other"}])
-    assert S.route(t_, CTX_WATCH, RULES) == ("new_business", None)
-
-
-def test_regions():
-    abroad = dict(region="Asia Pacific")
-    # Prospects and watched-brand news outside the team's regions are left out...
-    assert S.route(tag(signal="acquisition", companies=[{"name": "Sime Darby", "role": "acquirer"}], **abroad), CTX_WATCH, RULES, ["North America"]) is None
-    assert S.route(tag(signal="launch", brands=["Kia"], **abroad), CTX_WATCH, RULES, ["North America"]) is None
-    # ...but a watched company is an account wherever the news happens, and competitor incidents always count.
-    assert S.route(tag(signal="acquisition", companies=[{"name": "AutoNation", "role": "target"}], **abroad), CTX_WATCH, RULES, ["North America"]) == ("potential_risk", "AutoNation")
-    assert S.route(tag(signal="competitor_incident", companies=[{"name": "CDK Global", "role": "subject"}], **abroad), CTX_WATCH, RULES, ["North America"])
-    # In region, Global, Unknown or no regions configured: normal routing.
-    for r in ("North America", "Global", "Unknown"):
-        assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], region=r), CTX_WATCH, RULES, ["North America"])
-    assert S.route(tag(signal="acquisition", companies=[{"name": "X Group", "role": "acquirer"}], **abroad), CTX_WATCH, RULES)
-
-
-def test_oem_moving_away_from_dealers_is_a_risk():
-    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"], direction="falling"), CTX_WATCH, RULES)[0] == "potential_risk"
-    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"], direction="rising"), CTX_WATCH, RULES)[0] == "potential_growth"
+    out = S.rank([_cand("account_news", 0.8, ["Busy Group"]), _cand("account_news", 0.9, ["Busy Group"], host="a.com")], RULES)
+    assert all("priority" not in c for c in out["account_news"])
 
 
 def test_url_date_older_than_reported_date():
@@ -389,10 +342,9 @@ def test_ai_failure_falls_back_to_rules_for_that_batch_only(monkeypatch):
 
 # ---------------------------------------------------------------- whole run (scheduling, sending, state)
 
-def _write_config(tmp_path, watchlist=True):
+def _write_config(tmp_path):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("recipients: [team@example.com, rep@example.com]\nsend_hour: 8\ntimezone: America/Chicago\ncontact: Shushrut\n"
-                   + ("watchlist:\n  - Lithia Motors | Lithia\n  - Toyota\n" if watchlist else ""))
+    cfg.write_text("recipients: [team@example.com, rep@example.com]\nsend_hour: 8\ntimezone: America/Chicago\ncontact: Shushrut\n")
     rules = tmp_path / "rules.yaml"
     import yaml
     raw = yaml.safe_load((ROOT / "rules.yaml").read_text(encoding="utf-8"))
@@ -419,8 +371,8 @@ def _at_local(hour: int) -> dt.datetime:
     return dt.datetime(day.year, day.month, day.day, hour, 17, tzinfo=ZoneInfo("America/Chicago")).astimezone(dt.timezone.utc)
 
 
-def _run(tmp_path, now, outbox, *extra, watchlist=True):
-    cfg, rules = _write_config(tmp_path, watchlist)
+def _run(tmp_path, now, outbox, *extra):
+    cfg, rules = _write_config(tmp_path)
     args = ["--config", str(cfg), "--rules", str(rules), "--state", str(tmp_path / "sent.json"), "--out", str(tmp_path / "out"), *extra]
     return S.main(args, now=now, fetcher=fixture_fetcher, ai_client=False, sender=outbox)
 
@@ -465,7 +417,7 @@ def test_preview_sends_nothing_and_writes_files(tmp_path):
     html_out = (tmp_path / "out" / "preview.html").read_text(encoding="utf-8")
     text_out = (tmp_path / "out" / "preview.txt").read_text(encoding="utf-8")
     assert "Hi Team," in html_out and text_out.startswith("Subject: Automotive market update – ")
-    assert "Here's what happened in the automotive world in the last 24 hours." in text_out and "NEW ACCOUNTS" in text_out
+    assert "Here's what happened in the automotive world in the last 24 hours." in text_out and "ACCOUNT NEWS" in text_out
     assert not (tmp_path / "sent.json").exists()  # previews don't touch state
 
 
@@ -478,13 +430,12 @@ def test_test_copy_goes_to_one_address_and_does_not_count(tmp_path):
 
 def test_email_format(tmp_path):
     box = Outbox()
-    _run(tmp_path, _at_local(8), box, watchlist=False)
+    _run(tmp_path, _at_local(8), box)
     mail = box.sent[0]
     assert mail["subject"].startswith("Automotive market update – ")
     assert mail["text"].startswith("Hi Team,\n\nHere's what happened in the automotive world in the last 24 hours.")
-    assert "NEW ACCOUNTS" in mail["text"]
-    assert "Why it matters" not in mail["text"]  # optional: keyword rules never add a stock line
-    assert "Existing accounts" not in mail["html"]  # no watchlist, so no existing-accounts section
+    assert "ACCOUNT NEWS" in mail["text"]
+    assert "Why it matters" not in mail["text"]  # keyword rules never add a stock line
     assert "This is an automated email, so replies aren’t read. To share feedback, message Shushrut" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
     assert " should " not in mail["text"].lower()
     import re
@@ -551,29 +502,27 @@ def test_ai_refusal_counts_as_batch_failure():
 
 def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
-    assert "Automotive Retail Cloud" in p and "implication: optional" in p
+    assert "Automotive Retail Cloud" in p and "Leave it empty only when the line would be generic" in p
+    assert "buyer:" in p and "Political statements" in p and "Routine hires below the C-suite" in p
 
 
-def test_industry_trends_last_one_per_type_capped_and_gated():
+def test_industry_trends_first_one_per_type_capped_and_gated():
     def trend(signal, conf=0.9, host="t.com"):
-        c = _cand("industry_development", conf, host=host)
-        c["tag"]["signal"] = signal
-        return c
+        return _cand("industry_trends", conf, host=host, signal=signal)
     cands = [trend("launch", host="a.com"), trend("launch", 0.95, host="b.com"), trend("regulation", host="c.com"),
              trend("market_trend", host="d.com"), trend("oem_retail_strategy", host="e.com"), trend("sales_shift", host="f.com")]
     out = S.rank(cands, RULES)
     sigs = [c["tag"]["signal"] for c in out["industry_trends"]]
     assert sigs == ["oem_retail_strategy", "regulation", "market_trend"]  # signal order, one per type, at most 3
-    assert S.SECTIONS[-1] == "industry_trends"
+    assert S.SECTIONS[0] == "industry_trends"
     # Not hot news (general knowledge, explainer, opinion): left out of every section.
     assert S.rank([trend("regulation", 0.4)], RULES)["industry_trends"] == []
-    assert S.rank([_cand("new_business", 0.4, ["Dealer Group D"])], RULES)["new_accounts"] == []
+    assert S.rank([_cand("account_news", 0.4, ["Dealer Group D"])], RULES)["account_news"] == []
 
 
 def test_a_day_with_only_trends_is_not_a_quiet_day():
     import datetime as dt
-    c = _cand("industry_development", 0.9)
-    c["tag"]["signal"] = "regulation"
+    c = _cand("industry_trends", 0.9, signal="regulation")
     c["lead"] = "FTC · North America"
     secs = {s: [] for s in S.SECTIONS}
     secs["industry_trends"] = [c]

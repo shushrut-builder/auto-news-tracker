@@ -37,12 +37,12 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 USER_AGENT = "auto-sales-signals/1.0"
 
-# The email has four sections: news about watchlist names (Existing accounts), prospect signals about anyone
-# else (New accounts), news about us or a competing dealer software provider (Tekion and competitors), and a
-# short list of market-wide developments (Industry trends). Each item is labelled company · region.
-SECTIONS = ["existing_accounts", "new_accounts", "tekion_competitors", "industry_trends"]
-SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts",
-                  "tekion_competitors": "Tekion and competitors", "industry_trends": "Industry trends"}
+# The email has four sections, in this order: market-wide developments (Industry trends), news about dealers,
+# groups and carmakers the team could sell to (Account news), news about competing dealer software providers
+# (Competitors), and news about us (Tekion). Each item is labelled company · region.
+SECTIONS = ["industry_trends", "account_news", "competitors", "tekion"]
+SECTION_TITLES = {"industry_trends": "Industry trends", "account_news": "Account news",
+                  "competitors": "Competitors", "tekion": "Tekion"}
 # Regions a team can cover (config.yaml `regions`). The AI tags each story with one of these, or Global / Unknown.
 REGIONS = ["North America", "Europe", "India", "Middle East", "Asia Pacific", "Latin America", "Africa"]
 STORY_REGIONS = REGIONS + ["Global", "Unknown"]
@@ -65,22 +65,6 @@ def log(msg: str) -> None:
 
 class ConfigError(Exception):
     pass
-
-
-def parse_watchlist(lines) -> list[dict]:
-    """["Name | alias1, alias2", ...] -> [{"name", "aliases"}], blanks and duplicates ignored."""
-    out, seen = [], set()
-    for raw in lines or []:
-        line = str(raw).strip()
-        if not line:
-            continue
-        name, _, aliases = line.partition("|")
-        name = name.strip()
-        if not name or name.lower() in seen:
-            continue
-        seen.add(name.lower())
-        out.append({"name": name, "aliases": [a.strip() for a in aliases.split(",") if a.strip()]})
-    return out
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -113,7 +97,7 @@ def load_config(path: Path) -> dict:
     if unknown:
         raise ConfigError(f"{path.name}: unknown region(s) {', '.join(map(str, unknown))} (use: {', '.join(REGIONS)})")
     contact = str(cfg.get("contact") or "").strip()
-    return {"recipients": [str(r) for r in recipients], "send_hour": hour, "timezone": tz, "watchlist": parse_watchlist(cfg.get("watchlist")),
+    return {"recipients": [str(r) for r in recipients], "send_hour": hour, "timezone": tz,
             "regions": [by_lower[str(r).strip().lower()] for r in regions], "contact": contact}
 
 
@@ -499,19 +483,16 @@ def capitalised_phrases(title: str) -> list[str]:
 
 
 class RulesContext:
-    def __init__(self, rules: dict, watchlist: list[dict]):
+    def __init__(self, rules: dict):
         self.rules = rules
         known = []
         for c in [rules["us"]] + rules["competitors"]:
             kind = "us" if c is rules["us"] else "competitor"
             for n in [c["name"]] + c.get("aliases", []):
                 known.append((c["name"], word_re(n), kind))
-        for w in watchlist:
-            for n in [w["name"]] + w["aliases"]:
-                known.append((w["name"], word_re(n), "watch"))
         known.sort(key=lambda k: -len(k[1].pattern))
         self.known = known
-        names = list(dict.fromkeys(rules["brands"] + [w["name"] for w in watchlist]))
+        names = list(dict.fromkeys(rules["brands"]))
         self.brands = sorted(((n, word_re(n)) for n in names), key=lambda b: -len(b[0]))
 
 
@@ -571,7 +552,7 @@ def classify_rules(story: dict, ctx: RulesContext) -> dict:
     if summary and summary[-1] not in ".!?":
         summary += "."
     return {"relevant": signal is not None, "signal": signal, "companies": companies, "brands": brand_hits[:5], "direction": direction,
-            "summary": summary, "implication": implication, "confidence": confidence, "region": "Unknown", "outlet": "", "tagged_by": "rules"}
+            "summary": summary, "implication": implication, "confidence": confidence, "region": "Unknown", "outlet": "", "buyer": None, "tagged_by": "rules"}
 
 
 # ---------------------------------------------------------------- classify: AI (optional)
@@ -592,9 +573,9 @@ Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - launch: only a launch that changes how dealers sell or service: a new brand entering a market or choosing its dealers or sales channel, or a new EV line that needs new service tools or training. A routine model reveal, facelift, trim or concept car is relevant: false.
 Market signals:
 - competitor_incident: an outage, cyberattack, breach, lawsuit or regulatory action involving a competing dealer software provider.
-- regulation: a law, regulation, tariff or policy change affecting auto dealers or vehicle sales.
+- regulation: an actual new, proposed or court-ordered law, regulation, ruling or tariff affecting auto dealers or vehicle sales. Political statements, negotiations, speeches and positions without a concrete rule are relevant: false.
 - market_trend: industry-wide data or a study about auto retail: inventory levels, sales pace, used-vehicle prices, loan rates, dealer profitability, dealership deal volume or valuations, or a survey of how dealers use technology (AI, digital retail, cloud, cybersecurity). Not about one company.
-- vendor_news: other news about our company or a competing dealer software provider: a dealer or OEM choosing our company, product launches, partnerships, funding, acquisitions, pricing, layoffs or leadership changes. Name the provider as a company with role "subject"."""
+- vendor_news: other news about our company or a competing dealer software provider: a dealer or OEM choosing our company, product launches, partnerships, funding, acquisitions, pricing, layoffs, or a C-suite change or a new head of sales, product or engineering. Routine hires below the C-suite outside sales and product (HR, finance, marketing, regional roles) are relevant: false. Name the provider as a company with role "subject"."""
 
 
 def system_prompt(rules: dict) -> str:
@@ -617,12 +598,13 @@ Rules:
 - Extract only companies and brands that are named in the title or snippet. Use the name as written. Never infer or add names.
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one plain sentence of at most 35 words. No opinion, no implication.
-- implication: optional. Return an empty string unless there is something specific and useful to say about this event; most items need nothing. When there is, write one sentence of at most 30 words on what this event means for the companies involved. It may name which of our products fits the situation, but only when the link to this event is direct (for example, a group buying stores and moving them onto one system); never add a product mention just to have one. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
+- implication: write it whenever you can say something specific about what this event means for the companies involved (for example, a new store needs its systems set up, a new owner usually consolidates systems, a new brand is building a dealer network). Leave it empty only when the line would be generic. When you write it, use one sentence of at most 30 words on what this event means for the companies involved. It may name which of our products fits the situation, but only when the link to this event is direct (for example, a group buying stores and moving them onto one system); never add a product mention just to have one. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
 - confidence: 0 to 1, how clearly this is hot news: a specific, new event or fresh data point from the past few days, stated as fact, with the signal, companies and roles clear from the text. Use below 0.5 for general knowledge, explainers, how-to or advice pieces, opinion, predictions, evergreen features, or a rehash of known facts, and when the text is too thin to tell what happened.
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
 - region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
 - english: false if the title or snippet is not in English.
 - current: false if the item is not news from the past few days relative to "today" (an old article, an anniversary piece, an evergreen feature or cover story, or a recap of past events). The publishedAt date can be wrong; judge from the text too.
+- buyer: true if the main company the news is about is a business that would buy dealer software: a dealer, dealer group, distributor or importer, or a carmaker's sales and retail side. false for insurers, lenders, warranty or F&I product companies, parts suppliers, tech startups, software vendors and other businesses.
 - outlet: the publication's usual name (for example "The Edge Malaysia" for theedgemalaysia.com, "Automotive News" for autonews.com). If unsure, repeat the publisher given.
 - Return one result per input item, with the same id."""
 
@@ -632,7 +614,7 @@ OUTPUT_SCHEMA = {
     "properties": {"results": {"type": "array", "items": {
         "type": "object", "additionalProperties": False,
         "required": ["id", "relevant", "signal", "companies", "brands", "direction", "summary", "implication", "confidence",
-                     "region", "english", "current", "outlet"],
+                     "region", "english", "current", "outlet", "buyer"],
         "properties": {
             "id": {"type": "string"},
             "relevant": {"type": "boolean"},
@@ -648,6 +630,7 @@ OUTPUT_SCHEMA = {
             "english": {"type": "boolean"},
             "current": {"type": "boolean"},
             "outlet": {"type": "string"},
+            "buyer": {"type": "boolean"},
         }}}},
 }
 FORBIDDEN = re.compile(r"\b(should|reach out|contact|opportunity to)\b", re.I)
@@ -715,6 +698,7 @@ def ai_tag_batch(client, rules: dict, batch: list[dict]) -> tuple[dict, list[str
             "confidence": max(0.0, min(1.0, float(r["confidence"]))),
             "region": r.get("region") if r.get("region") in STORY_REGIONS else "Unknown",
             "outlet": (r.get("outlet") or "").strip(),
+            "buyer": r.get("buyer") if isinstance(r.get("buyer"), bool) else None,
             "tagged_by": "ai",
         }
         del by_id[s["id"]]
@@ -780,84 +764,20 @@ def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -
 
 # ---------------------------------------------------------------- route and rank (design doc, section 4)
 
-FALL = "fall"  # this column doesn't decide; try the next one
-
-
-def _acq(ctx):
-    return "potential_growth" if ctx["role"] == "acquirer" else "potential_risk"
-
-
-def _cert_brand(ctx):
-    return {"competitor": "potential_risk", "us": "potential_growth"}.get(ctx["cert"], FALL)
-
-
-def _cert_other(ctx):
-    return "new_business" if ctx["cert"] == "us" else "industry_development"
-
-
-def _sales(ctx):
-    return "potential_risk" if ctx["direction"] == "falling" else "potential_growth"
-
-
-def _retail(ctx):
-    # A watched brand cutting dealers out (direct sales, agency model) is a risk; expanding its network is growth.
-    return "potential_risk" if ctx["direction"] == "falling" else "potential_growth"
-
-
-# signal: (watched company, watched brand, not on the watchlist). None = don't show.
+# signal -> section for stories that aren't about us or a competitor. None = leave out.
 ROUTING = {
-    "acquisition": (_acq, FALL, "new_business"),
-    "closure": ("potential_risk", FALL, "lower_priority"),
-    "new_store": ("potential_growth", FALL, "new_business"),
-    "market_entry": ("potential_growth", FALL, "new_business"),
-    "competitor_selected": ("potential_risk", FALL, "lower_priority"),
-    "leadership_change": ("potential_risk", FALL, "new_business"),
-    "tech_investment": ("potential_growth", FALL, "new_business"),
-    "oem_dms_certification": (FALL, _cert_brand, _cert_other),
-    "oem_retail_strategy": (FALL, _retail, "industry_development"),
-    # Recalls are left out. Launches and market sales go to Industry trends, even for a watched brand.
-    "major_recall": (FALL, None, None),
-    "sales_shift": (FALL, FALL, "industry_development"),
-    "launch": (FALL, FALL, "industry_development"),
-    "competitor_incident": ("industry_development", "industry_development", "new_business"),
-    "regulation": ("industry_development", "industry_development", "industry_development"),
-    "vendor_news": ("industry_development", "industry_development", "industry_development"),
-    "market_trend": ("industry_development", "industry_development", "industry_development"),
+    "acquisition": "account_news", "closure": "account_news", "new_store": "account_news", "market_entry": "account_news",
+    "competitor_selected": "account_news", "leadership_change": "account_news", "tech_investment": "account_news",
+    "oem_dms_certification": "industry_trends", "oem_retail_strategy": "industry_trends", "sales_shift": "industry_trends",
+    "launch": "industry_trends", "regulation": "industry_trends", "market_trend": "industry_trends",
+    "major_recall": None,
+    # Shown only when they name us or a competitor (then they go to Tekion or Competitors).
+    "competitor_incident": None, "vendor_news": None,
 }
-ROLE_ORDER = ["acquirer", "target", "certified", "subject", "other"]
 
 
 def _names(entry) -> set[str]:
     return {norm_company(n) for n in [entry["name"]] + entry["aliases"]}
-
-
-def match_watchlist(tag: dict, watchlist: list[dict]) -> tuple[dict | None, dict | None]:
-    """(company match {name, role}, brand match {name}). One watchlist: a name can match either way."""
-    company_hit = brand_hit = None
-    # Normalised names only match whole names, so "HD Hyundai" never equals "Hyundai" here.
-    brands = {norm_company(b) for b in tag["brands"]}
-    for w in watchlist:
-        names = _names(w)
-        # Only when the story is about the company: a passing mention (role "other") isn't news about that account.
-        hits = [c for c in tag["companies"] if norm_company(c["name"]) in names and c["role"] != "other"]
-        if hits and not company_hit:
-            hits.sort(key=lambda c: ROLE_ORDER.index(c["role"]) if c["role"] in ROLE_ORDER else 9)
-            company_hit = {"name": w["name"], "role": hits[0]["role"]}
-        if (names & brands or hits) and not brand_hit:
-            brand_hit = {"name": w["name"]}
-    return company_hit, brand_hit
-
-
-def cert_party(tag: dict, rules: dict) -> str | None:
-    certified = [norm_company(c["name"]) for c in tag["companies"] if c["role"] == "certified"]
-    if not certified:
-        return None
-    for n in certified:
-        if any(n in _names({"name": c["name"], "aliases": c.get("aliases", [])}) for c in rules["competitors"]):
-            return "competitor"
-        if n in _names({"name": rules["us"]["name"], "aliases": rules["us"].get("aliases", [])}):
-            return "us"
-    return "other"
 
 
 def vendor_kind(tag: dict, rules: dict) -> tuple[str, str] | None:
@@ -880,39 +800,26 @@ def in_regions(tag: dict, regions: list[str] | None) -> bool:
     return not regions or tag.get("region") in (None, "Global", "Unknown") or tag["region"] in regions
 
 
-def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | None = None) -> tuple[str, str | None] | None:
-    """Category for a tagged story and the watchlist name that matched (if any). None = leave out.
-    Outside the team's regions: a watched company still counts (it's an account); a watched brand's news and
-    anything else is left out, except news about us or competitors. A dealer choosing a competitor is a
-    prospect story about the dealer, so it follows the regions like other prospects."""
+def route(tag: dict, rules: dict, regions: list[str] | None = None) -> str | None:
+    """Section for a tagged story, or None to leave it out.
+    - About Tekion -> Tekion; about a competing provider -> Competitors. From any region.
+    - A dealer choosing a competitor -> Account news, labelled with the dealer (it needs a named dealer).
+    - Account news needs a business that would buy dealer software (buyer), in the team's regions.
+    - Industry trends: market-wide developments in the team's regions."""
     if not tag["relevant"] or not tag["signal"]:
         return None
-    company_cell, brand_cell, other_cell = ROUTING[tag["signal"]]
-    ctx = {"role": None, "cert": cert_party(tag, rules), "direction": tag["direction"]}
-    company_hit, brand_hit = match_watchlist(tag, watchlist)
-    local = in_regions(tag, regions)
-    vendor_story = tag["signal"] in ("competitor_incident", "vendor_news") or (
-        tag["signal"] != "competitor_selected" and vendor_kind(tag, rules))
-    if not local and not company_hit and not vendor_story:
+    signal = tag["signal"]
+    vendor = vendor_kind(tag, rules)
+    if vendor and (vendor[0] == "us" or signal != "competitor_selected"):
+        return "tekion" if vendor[0] == "us" else "competitors"
+    section = ROUTING[signal]
+    if section is None or not in_regions(tag, regions):
         return None
-
-    def cell(c, extra=None):
-        return c({**ctx, **(extra or {})}) if callable(c) else c
-
-    if company_hit:
-        r = cell(company_cell, {"role": company_hit["role"]})
-        if r is None:
-            return None
-        if r != FALL:
-            return r, company_hit["name"]
-    if brand_hit:
-        r = cell(brand_cell)
-        if r is None:
-            return None
-        if r != FALL:
-            return r, brand_hit["name"]
-    r = cell(other_cell)
-    return (r, None) if r and r != FALL else None
+    if section == "account_news" and tag.get("buyer") is False:
+        return None
+    if signal == "competitor_selected" and not dealer_name(tag, rules):
+        return None
+    return section
 
 
 def dealer_name(tag: dict, rules: dict) -> str:
@@ -925,12 +832,11 @@ def dealer_name(tag: dict, rules: dict) -> str:
 
 def lead_name(c: dict, rules: dict) -> str:
     """The company an item is about, for its label."""
-    if c.get("matched"):
-        return c["matched"]
-    if c.get("dealer"):
-        return c["dealer"]
-    if c.get("vendor"):
-        return c["vendor"][1]
+    if c["tag"]["signal"] == "competitor_selected" and c["section"] == "account_news":
+        return dealer_name(c["tag"], rules)
+    vendor = vendor_kind(c["tag"], rules)
+    if vendor:
+        return vendor[1]
     for role in ("acquirer", "subject", "target", "certified"):
         for co in c["tag"]["companies"]:
             if co["role"] == role:
@@ -939,46 +845,22 @@ def lead_name(c: dict, rules: dict) -> str:
 
 
 def rank(candidates: list[dict], rules: dict) -> dict:
-    """Three sections:
-    - Existing accounts: every story about a watchlist name.
-    - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions,
-      including a dealer choosing a competitor (labelled with the dealer).
-    - Industry trends: market-wide developments (retail model changes, regulation, market data, launches that
-      change dealer work), at most one per type.
-    Stories below the hot-news gate (general knowledge, explainers, opinion) are left out.
-    - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
-    Within a section, items are ordered by sales signal (settings.signal_order), then a per-outlet cap
-    and section caps. Nothing is marked as a priority: the team decides that."""
+    """Candidates already carry their section (see route). Here: the hot-news gate (general knowledge, explainers
+    and opinion are left out), labels, ordering by sales signal (settings.signal_order), one item per type in
+    Industry trends, a per-outlet cap and section caps. Nothing is marked as a priority: the team decides that."""
     s = rules["settings"]
     order = {sig: i for i, sig in enumerate(s.get("signal_order") or SIGNALS)}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
         if c["tag"]["confidence"] < s["hot_news_gate"]:
             continue
-        c.setdefault("vendor", vendor_kind(c["tag"], rules))
-        if c.get("matched"):
-            section = "existing_accounts"
-        elif c["tag"]["signal"] == "competitor_selected":
-            # A dealer choosing a competitor: the dealer is a new account to work on. Needs a named dealer.
-            c["dealer"] = dealer_name(c["tag"], rules)
-            if not c["dealer"]:
-                continue
-            section = "new_accounts"
-        elif c["vendor"]:
-            section = "tekion_competitors"
-        elif c["section"] == "new_business":
-            section = "new_accounts"
-        elif c["section"] == "industry_development":
-            section = "industry_trends"
-        else:
-            continue
         # Label: company · region (region left out when unknown).
         region = c["tag"].get("region") or ""
         c["lead"] = " · ".join(x for x in (lead_name(c, rules), region if region != "Unknown" else "") if x)
-        out[section].append(c)
+        out[c["section"]].append(c)
     per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), order.get(c["tag"]["signal"], len(order)),
+        out[sec].sort(key=lambda c: (order.get(c["tag"]["signal"], len(order)),
                                      c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept, types = [], set()
         for c in out[sec]:
@@ -1135,7 +1017,7 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     log(f"Clean: {len(items)} kept, {dropped} dropped as noise or off-topic")
     stories = drop_already_sent(dedupe(items, s["title_similarity"]), state["sent_items"], s["title_similarity"])
     log(f"Dedupe: {len(stories)} new stories")
-    ctx = RulesContext(rules, cfg["watchlist"])
+    ctx = RulesContext(rules)
     tags, fallback = classify(stories, rules, ctx, ai_client)
     stories = merge_same_story(stories, tags)
     relevant = [st for st in stories if tags[st["id"]]["relevant"]]
@@ -1143,9 +1025,9 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
 
     candidates = []
     for st in relevant:
-        r = route(tags[st["id"]], cfg["watchlist"], rules, cfg.get("regions"))
-        if r:
-            candidates.append({"story": st, "tag": tags[st["id"]], "section": r[0], "matched": r[1]})
+        sec = route(tags[st["id"]], rules, cfg.get("regions"))
+        if sec:
+            candidates.append({"story": st, "tag": tags[st["id"]], "section": sec})
     sections = rank(candidates, rules)
     degraded = len(ok) < 0.4 * attempted or fallback > 0
     local_now = now.astimezone(ZoneInfo(cfg["timezone"]))

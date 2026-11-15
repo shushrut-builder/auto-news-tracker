@@ -12,24 +12,7 @@ timezone: America/Chicago
 contact: Shushrut
 
 # Optional. Regions the team sells into: North America, Europe, India, Middle East, Asia Pacific,
-# Latin America, Africa. News elsewhere is left out unless it's about a watchlist company.
+# Latin America, Africa. News elsewhere is left out, except news about Tekion and its competitors.
 # Delete the list to cover every region.
 regions:
   - North America
-
-# Optional. Companies or brands to watch, one per line, aliases after a bar.
-# News about them goes under "Existing accounts". Delete the list to turn this off.
-watchlist:
-  - AutoNation | AutoNation USA
-  - Lithia Motors | Lithia, Lithia & Driveway, Driveway
-  - Penske Automotive Group | Penske Automotive
-  - Group 1 Automotive | Group 1
-  - Sonic Automotive | EchoPark
-  - Asbury Automotive Group | Asbury Automotive, Asbury
-  - Toyota
-  - Honda
-  - Ford
-  - Hyundai
-  - Kia
-  - BMW | BMW Group
-  - Volkswagen | VW, Volkswagen Group
