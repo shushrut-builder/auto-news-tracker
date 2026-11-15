@@ -379,11 +379,33 @@ def collect(rules: dict, since: dt.datetime, now: dt.datetime, fetcher=None, exa
                     it["tier"] = source["tier"]
                     it["auto_only"] = source.get("auto_only", False)
                     it["is_aggregator"] = source["type"] == "google_news"
+                    it["from_search"] = source["type"] in ("google_news", "exa")
                     items.append(it)
     return items, ok, failed
 
 
 # ---------------------------------------------------------------- clean: normalise, pre-filter, dedupe
+
+def rate_outlets(items: list[dict], rules: dict) -> list[dict]:
+    """Search results (Google News, Exa) come from any site. One from a trusted outlet (rules.yaml
+    trusted_outlets, by domain or name) gets tier 1, so it wins when outlets carry the same story and
+    sorts ahead of unknown sites within a section."""
+    domains, names = set(), set()
+    for entry in rules.get("trusted_outlets", []):
+        d, _, n = str(entry).partition("|")
+        if d.strip():
+            domains.add(d.strip().lower())
+        if n.strip():
+            names.add(n.strip().lower())
+    for it in items:
+        if not it.get("from_search"):
+            continue
+        host = (urlsplit(it["url"]).hostname or "").lower().removeprefix("www.")
+        pub = str(it.get("publisher", "")).strip().lower().removeprefix("www.")
+        if any(host == d or host.endswith("." + d) or pub == d for d in domains) or pub in names:
+            it["tier"] = 1
+    return items
+
 
 def normalize(items: list[dict]) -> list[dict]:
     out = []
@@ -1012,10 +1034,14 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     items, ok, failed = collect(rules, window_start, now, fetcher)
     attempted = len(ok) + len(failed)
     log(f"Collect: {len(ok)}/{attempted} sources ok, {len(items)} items in window" + (f", failed: {', '.join(f['id'] for f in failed)}" if failed else ""))
-    items = normalize(items)
+    items = rate_outlets(normalize(items), rules)
     items, dropped = prefilter(items, rules)
     log(f"Clean: {len(items)} kept, {dropped} dropped as noise or off-topic")
-    stories = drop_already_sent(dedupe(items, s["title_similarity"]), state["sent_items"], s["title_similarity"])
+    tz = ZoneInfo(cfg["timezone"])
+    today = now.astimezone(tz).date()
+    # Only emails from earlier days count as already sent; a second send the same day keeps today's stories.
+    earlier = [x for x in state["sent_items"] if dt.datetime.fromisoformat(x["at"]).astimezone(tz).date() < today]
+    stories = drop_already_sent(dedupe(items, s["title_similarity"]), earlier, s["title_similarity"])
     log(f"Dedupe: {len(stories)} new stories")
     ctx = RulesContext(rules)
     tags, fallback = classify(stories, rules, ctx, ai_client)

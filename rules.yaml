@@ -485,6 +485,35 @@ signals:
   regulation:
     patterns:
     - 'regulat|\bpolicy\b|\b(new|state|federal|proposed) (law|bill)s?\b|\b(new|final|proposed|federal|ftc|cars|safeguards) rules?\b|\bftc\b|\bmandate\b|tariff|import duty|\bcompliance\b|emission standard'
+# Outlets ranked like tier-1 feeds when they turn up in Google News or Exa results ("domain | name").
+# They win when several outlets carry the same story, and sort ahead of unknown sites.
+trusted_outlets:
+- autonews.com | Automotive News
+- cbtnews.com | CBT News
+- automotivedive.com | Automotive Dive
+- wardsauto.com | WardsAuto
+- autoremarketing.com | Auto Remarketing
+- coxautoinc.com | Cox Automotive
+- canadianautodealer.ca | Canadian Auto Dealer
+- just-auto.com | Just Auto
+- automotiveworld.com | Automotive World
+- am-online.com | AM
+- autocarpro.in | Autocar Professional
+- reuters.com | Reuters
+- bloomberg.com | Bloomberg
+- wsj.com | The Wall Street Journal
+- ft.com | Financial Times
+- cnbc.com | CNBC
+- apnews.com | Associated Press
+- nytimes.com | The New York Times
+- detroitnews.com | The Detroit News
+- freep.com | Detroit Free Press
+- theglobeandmail.com | The Globe and Mail
+- cbc.ca | CBC
+- prnewswire.com | PR Newswire
+- businesswire.com | Business Wire
+- globenewswire.com | GlobeNewswire
+- tekion.com | Tekion
 # Names that contain a car brand but are a different business. Removed before brand matching,
 # so "HD Hyundai" (shipbuilding) or "Hyundai Home Shopping" don't count as Hyundai.
 brand_exclude:

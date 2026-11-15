@@ -529,3 +529,28 @@ def test_a_day_with_only_trends_is_not_a_quiet_day():
     now = dt.datetime(2026, 11, 16, 8, tzinfo=dt.timezone.utc)
     _, _, text = S.compose(secs, now, None, False, "Shushrut")
     assert "Here's what happened" in text and "INDUSTRY TRENDS" in text and "Nothing relevant" not in text
+
+
+def test_trusted_outlets_rank_like_tier_one():
+    def it(url, publisher, search=True):
+        return {"url": url, "publisher": publisher, "tier": 3, "from_search": search}
+    items = S.rate_outlets([it("https://www.reuters.com/x", "reuters.com"), it("https://news.google.com/a", "Automotive News"),
+                            it("https://hoodline.com/y", "hoodline.com"), it("https://feed.example.com/z", "Feed", search=False)], RULES)
+    assert [i["tier"] for i in items] == [1, 1, 3, 3]  # a feed keeps its own tier
+
+
+def test_same_day_send_does_not_count_as_already_sent(tmp_path):
+    box = Outbox()
+    assert _run(tmp_path, _at_local(8), box) == 0
+    path = tmp_path / "sent.json"
+    assert json.loads(path.read_text(encoding="utf-8"))["sent_items"]
+    # A second send the same day (send-now to the team) still has today's stories.
+    assert _run(tmp_path, _at_local(8), box, "--send-now") == 0
+    assert "ACCOUNT NEWS" in box.sent[-1]["text"]
+    # Stories sent on an earlier day are still left out.
+    state = json.loads(path.read_text(encoding="utf-8"))
+    for x in state["sent_items"]:
+        x["at"] = (dt.datetime.fromisoformat(x["at"]) - dt.timedelta(days=1)).isoformat()
+    path.write_text(json.dumps(state), encoding="utf-8")
+    assert _run(tmp_path, _at_local(8), box, "--send-now") == 0
+    assert "ACCOUNT NEWS" not in box.sent[-1]["text"]
