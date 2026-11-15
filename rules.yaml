@@ -604,7 +604,7 @@ settings:
   lookback_hours: 24
   max_lookback_hours: 72
   title_similarity: 0.75
-  sent_memory_days: 14
+  sent_memory_days: 0   # 0 = off, so every story in the last 24 hours is sent (for demos). 14 = skip stories sent on earlier days.
   # Order of items within each section: strongest sales signal first. Edit to re-rank.
   # Order of items within each section, strongest buying trigger first. Edit to re-rank.
   signal_order:
@@ -626,12 +626,10 @@ settings:
   - major_recall
   # 0-1. Below this the story reads as general knowledge, an explainer or opinion rather than hot news.
   hot_news_gate: 0.6
-  max_per_outlet: 2             # at most this many items from one publication per email
-  caps:
-    industry_trends: 3
-    account_news: 8
-    competitors: 5
-    tekion: 3
+  # Optional limits, all off for now so every story is sent. To turn them back on:
+  #   max_per_outlet: 2          # at most this many items from one publication per email
+  #   trends_one_per_type: true  # at most one launch, one regulation item, etc. in Industry trends
+  #   caps: {industry_trends: 3, account_news: 8, competitors: 5, tekion: 3}
   retry_hours: 3
   ai:
     model: claude-haiku-5-5

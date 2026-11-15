@@ -868,8 +868,9 @@ def lead_name(c: dict, rules: dict) -> str:
 
 def rank(candidates: list[dict], rules: dict) -> dict:
     """Candidates already carry their section (see route). Here: the hot-news gate (general knowledge, explainers
-    and opinion are left out), labels, ordering by sales signal (settings.signal_order), one item per type in
-    Industry trends, a per-outlet cap and section caps. Nothing is marked as a priority: the team decides that."""
+    and opinion are left out), labels and ordering by sales signal (settings.signal_order). Optional limits, all
+    off when unset: one item per type in Industry trends, a per-outlet cap and section caps. Nothing is marked
+    as a priority: the team decides that."""
     s = rules["settings"]
     order = {sig: i for i, sig in enumerate(s.get("signal_order") or SIGNALS)}
     out = {sec: [] for sec in SECTIONS}
@@ -886,16 +887,16 @@ def rank(candidates: list[dict], rules: dict) -> dict:
                                      c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept, types = [], set()
         for c in out[sec]:
-            if sec == "industry_trends":  # one item per type, so three launches can't fill the section
+            if sec == "industry_trends" and s.get("trends_one_per_type"):  # three launches can't fill the section
                 if c["tag"]["signal"] in types:
                     continue
                 types.add(c["tag"]["signal"])
             host = c["story"]["publisher"] if c["story"].get("is_aggregator") else (urlsplit(c["story"]["url"]).hostname or c["story"]["publisher"])
-            if per_outlet.get(host, 0) >= s["max_per_outlet"]:
+            if s.get("max_per_outlet") and per_outlet.get(host, 0) >= s["max_per_outlet"]:
                 continue
             per_outlet[host] = per_outlet.get(host, 0) + 1
             kept.append(c)
-        cap = s["caps"].get(sec)
+        cap = (s.get("caps") or {}).get(sec)
         out[sec] = kept[:cap] if cap is not None else kept
     return out
 
@@ -1040,7 +1041,8 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     tz = ZoneInfo(cfg["timezone"])
     today = now.astimezone(tz).date()
     # Only emails from earlier days count as already sent; a second send the same day keeps today's stories.
-    earlier = [x for x in state["sent_items"] if dt.datetime.fromisoformat(x["at"]).astimezone(tz).date() < today]
+    earlier = [x for x in state["sent_items"] if dt.datetime.fromisoformat(x["at"]).astimezone(tz).date() < today] \
+        if s["sent_memory_days"] else []  # 0 = off: every story in the window is sent, even if sent before
     stories = drop_already_sent(dedupe(items, s["title_similarity"]), earlier, s["title_similarity"])
     log(f"Dedupe: {len(stories)} new stories")
     ctx = RulesContext(rules)

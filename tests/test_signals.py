@@ -268,6 +268,16 @@ def test_regions():
 
 # ---------------------------------------------------------------- ranking
 
+# The limits are off by default (every story is sent); these tests switch them on.
+LIMITED = {**RULES, "settings": {**RULES["settings"], "max_per_outlet": 2, "trends_one_per_type": True,
+                                 "caps": {"industry_trends": 3, "account_news": 8, "competitors": 5, "tekion": 3}}}
+
+
+def test_limits_are_off_by_default():
+    s = RULES["settings"]
+    assert not s.get("caps") and not s.get("max_per_outlet") and not s.get("trends_one_per_type") and s["sent_memory_days"] == 0
+
+
 def _cand(section, conf, companies=(), tier=2, host="x.com", signal="acquisition"):
     st = _item(f"story {conf} {section} {companies} {host}", f"https://{host}/{section}{conf}{companies}", tier=tier)
     st["outlets"] = 1
@@ -285,7 +295,8 @@ def test_section_order_labels_signal_order_and_caps():
     # Ordered by sales signal, whatever the confidence; labelled company · region.
     assert [x["lead"] for x in out["account_news"]] == ["Kia", "Ford", "AutoNation · North America"]
     many = [_cand("account_news", 0.9 - i / 100, host=f"h{i}.com") for i in range(12)]
-    assert len(S.rank(many, RULES)["account_news"]) == 8
+    assert len(S.rank(many, RULES)["account_news"]) == 12  # no caps by default
+    assert len(S.rank(many, LIMITED)["account_news"]) == 8
 
 
 def test_competitors_and_tekion_have_their_own_sections():
@@ -304,7 +315,8 @@ def test_competitors_and_tekion_have_their_own_sections():
 
 def test_at_most_two_items_per_outlet():
     same = [_cand("account_news", 0.9 - i / 100, host="theedgemalaysia.com") for i in range(5)]
-    assert len(S.rank(same, RULES)["account_news"]) == 2
+    assert len(S.rank(same, LIMITED)["account_news"]) == 2
+    assert len(S.rank(same, RULES)["account_news"]) == 5
 
 
 def test_nothing_is_marked_priority():
@@ -342,7 +354,7 @@ def test_ai_failure_falls_back_to_rules_for_that_batch_only(monkeypatch):
 
 # ---------------------------------------------------------------- whole run (scheduling, sending, state)
 
-def _write_config(tmp_path):
+def _write_config(tmp_path, memory_days=None):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("recipients: [team@example.com, rep@example.com]\nsend_hour: 8\ntimezone: America/Chicago\ncontact: Shushrut\n")
     rules = tmp_path / "rules.yaml"
@@ -350,6 +362,8 @@ def _write_config(tmp_path):
     raw = yaml.safe_load((ROOT / "rules.yaml").read_text(encoding="utf-8"))
     raw["sources"] = [{k: v for k, v in s.items() if k != "file"} for s in FIXTURE_SOURCES]
     raw["settings"]["hot_news_gate"] = 0.5  # the saved fixture day only has keyword-rule tags (confidence 0.5)
+    if memory_days is not None:
+        raw["settings"]["sent_memory_days"] = memory_days
     rules.write_text(yaml.safe_dump(raw))
     return cfg, rules
 
@@ -371,8 +385,8 @@ def _at_local(hour: int) -> dt.datetime:
     return dt.datetime(day.year, day.month, day.day, hour, 17, tzinfo=ZoneInfo("America/Chicago")).astimezone(dt.timezone.utc)
 
 
-def _run(tmp_path, now, outbox, *extra):
-    cfg, rules = _write_config(tmp_path)
+def _run(tmp_path, now, outbox, *extra, memory_days=14):
+    cfg, rules = _write_config(tmp_path, memory_days)
     args = ["--config", str(cfg), "--rules", str(rules), "--state", str(tmp_path / "sent.json"), "--out", str(tmp_path / "out"), *extra]
     return S.main(args, now=now, fetcher=fixture_fetcher, ai_client=False, sender=outbox)
 
@@ -511,7 +525,7 @@ def test_industry_trends_first_one_per_type_capped_and_gated():
         return _cand("industry_trends", conf, host=host, signal=signal)
     cands = [trend("launch", host="a.com"), trend("launch", 0.95, host="b.com"), trend("regulation", host="c.com"),
              trend("market_trend", host="d.com"), trend("oem_retail_strategy", host="e.com"), trend("sales_shift", host="f.com")]
-    out = S.rank(cands, RULES)
+    out = S.rank(cands, LIMITED)
     sigs = [c["tag"]["signal"] for c in out["industry_trends"]]
     assert sigs == ["oem_retail_strategy", "regulation", "market_trend"]  # signal order, one per type, at most 3
     assert S.SECTIONS[0] == "industry_trends"
@@ -541,16 +555,19 @@ def test_trusted_outlets_rank_like_tier_one():
 
 def test_same_day_send_does_not_count_as_already_sent(tmp_path):
     box = Outbox()
-    assert _run(tmp_path, _at_local(8), box) == 0
+    assert _run(tmp_path, _at_local(8), box, memory_days=14) == 0
     path = tmp_path / "sent.json"
     assert json.loads(path.read_text(encoding="utf-8"))["sent_items"]
     # A second send the same day (send-now to the team) still has today's stories.
-    assert _run(tmp_path, _at_local(8), box, "--send-now") == 0
+    assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=14) == 0
     assert "ACCOUNT NEWS" in box.sent[-1]["text"]
     # Stories sent on an earlier day are still left out.
     state = json.loads(path.read_text(encoding="utf-8"))
     for x in state["sent_items"]:
         x["at"] = (dt.datetime.fromisoformat(x["at"]) - dt.timedelta(days=1)).isoformat()
     path.write_text(json.dumps(state), encoding="utf-8")
-    assert _run(tmp_path, _at_local(8), box, "--send-now") == 0
+    assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=14) == 0
     assert "ACCOUNT NEWS" not in box.sent[-1]["text"]
+    # With the memory off (the current setting), they're sent again.
+    assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=0) == 0
+    assert "ACCOUNT NEWS" in box.sent[-1]["text"]
