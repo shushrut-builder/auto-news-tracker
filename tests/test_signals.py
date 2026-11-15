@@ -481,6 +481,7 @@ def test_email_format(tmp_path):
     assert mail["subject"].startswith("Automotive market update – ")
     assert mail["text"].startswith("Hi Team,\n\nHere's what happened in the automotive world in the last 24 hours.")
     assert "NEW ACCOUNTS" in mail["text"]
+    assert "Why it matters" not in mail["text"]  # optional: keyword rules never add a stock line
     assert "Existing accounts" not in mail["html"]  # no watchlist, so no existing-accounts section
     assert "This is an automated email, so replies aren’t read. To share feedback, message Shushrut" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
     assert " should " not in mail["text"].lower()
@@ -544,3 +545,8 @@ def test_ai_refusal_counts_as_batch_failure():
     client = NS(messages=NS(create=lambda **k: NS(stop_reason="refusal", content=[])))
     with pytest.raises(S.BatchFailed):
         S.ai_tag_batch(client, RULES, [dict(_item("x", "https://x.com/z"), id="0")])
+
+
+def test_prompt_offers_products_but_keeps_why_it_matters_optional():
+    p = S.system_prompt(RULES)
+    assert "Automotive Retail Cloud" in p and "implication: optional" in p

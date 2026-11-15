@@ -140,7 +140,7 @@ def load_rules(path: Path) -> dict:
         rules["_signals"].append({
             "signal": name,
             "patterns": compile_all(spec["patterns"], f"signals.{name}"),
-            "implication": spec["implication"],
+            "implication": spec.get("implication", ""),
             "rising": re.compile(spec["rising"], re.I) if spec.get("rising") else None,
         })
     return rules
@@ -520,7 +520,7 @@ def classify_rules(story: dict, ctx: RulesContext) -> dict:
     for target, flag in ((title, True), (text, False)):
         for s in ctx.rules["_signals"]:
             if any(p.search(target) for p in s["patterns"]):
-                signal, in_title, implication, rising = s["signal"], flag, s["implication"], s["rising"]
+                signal, in_title, rising = s["signal"], flag, s["rising"]  # no stock "why it matters" line
                 break
         if signal:
             break
@@ -598,9 +598,10 @@ Market signals:
 def system_prompt(rules: dict) -> str:
     us = ", ".join([rules["us"]["name"]] + rules["us"].get("aliases", []))
     comps = "; ".join(" / ".join([c["name"]] + c.get("aliases", [])) for c in rules["competitors"])
+    products = "; ".join(rules["us"].get("products", [])) or "our dealer and OEM software"
     return f"""You tag automotive news items for a business development team that sells dealer management and automotive retail software to carmakers, distributors and dealer groups.
 
-Our company: {us}.
+Our company: {us}. Our products: {products}.
 Competing dealer software providers: {comps}.
 
 For each item, decide whether it is relevant to B2B automotive retail (dealers, dealer groups, distributors, OEM retail and sales, dealer software). Consumer content (car reviews, buying advice, motorsport, deals, celebrity, general business news unrelated to auto retail) is relevant: false, with signal null.
@@ -614,7 +615,7 @@ Rules:
 - Extract only companies and brands that are named in the title or snippet. Use the name as written. Never infer or add names.
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one plain sentence of at most 35 words. No opinion, no implication.
-- implication: what this specific event means for the companies involved, in one sentence of at most 25 words. Make it concrete to this story (name the company or the change); do not write a generic line that would fit any story of this type, and do not repeat the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Do not end with a generic mention of dealer management software. Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
+- implication: optional. Return an empty string unless there is something specific and useful to say about this event; most items need nothing. When there is, write one sentence of at most 30 words on what this event means for the companies involved. It may name which of our products fits the situation, but only when the link to this event is direct (for example, a group buying stores and moving them onto one system); never add a product mention just to have one. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
 - confidence: 0 to 1, your confidence that the signal, companies and roles are correct given only the text. Use below 0.6 when the text is thin or ambiguous.
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
 - region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
@@ -772,10 +773,6 @@ def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -
                 got, rejected = result
                 tags.update(got)
                 tags.update({s["id"]: classify_rules(s, ctx) for s in batch if s["id"] in rejected})
-    by_signal = {s["signal"]: s["implication"] for s in rules["_signals"]}
-    for t in tags.values():
-        if t["signal"] and not t["implication"]:
-            t["implication"] = by_signal.get(t["signal"], "")
     return tags, fallback
 
 
