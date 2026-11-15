@@ -37,6 +37,17 @@
    "mode": "send",
    "recipients": 1,
    "status": "ok"
+  },
+  {
+   "at": "2026-11-15T17:22:37.899531+00:00",
+   "failed_sources": [
+    "motor-trader",
+    "khaleej-times"
+   ],
+   "items": 4,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok"
   }
  ],
  "sent_items": []
