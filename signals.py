@@ -37,11 +37,11 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 USER_AGENT = "auto-sales-signals/1.0"
 
-# The email has two sections. Routing (ROUTING below) still decides risk / growth / new business per story;
-# rank() turns that into: watchlist news -> Existing accounts (labelled Risk or Growth), prospects -> New accounts.
-SECTIONS = ["existing_accounts", "new_accounts"]
-SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts"}
-LABELS = {"potential_risk": "Risk", "potential_growth": "Growth"}
+# The email has three sections: news about watchlist names (Existing accounts), prospect signals about anyone
+# else (New accounts), and news about us or a competing dealer software provider (Tekion and competitors).
+# Each item is labelled with the company and the type of event.
+SECTIONS = ["existing_accounts", "new_accounts", "tekion_competitors"]
+SECTION_TITLES = {"existing_accounts": "Existing accounts", "new_accounts": "New accounts", "tekion_competitors": "Tekion and competitors"}
 # Regions a team can cover (config.yaml `regions`). The AI tags each story with one of these, or Global / Unknown.
 REGIONS = ["North America", "Europe", "India", "Middle East", "Asia Pacific", "Latin America", "Africa"]
 STORY_REGIONS = REGIONS + ["Global", "Unknown"]
@@ -50,7 +50,7 @@ REGION_HINTS = {"North America": "the United States or Canada", "Europe": "Europ
 SIGNALS = [
     "acquisition", "closure", "new_store", "market_entry", "competitor_selected", "leadership_change", "tech_investment",
     "oem_dms_certification", "oem_retail_strategy", "major_recall", "sales_shift", "launch",
-    "competitor_incident", "regulation",
+    "competitor_incident", "regulation", "vendor_news",
 ]
 BRAND_SIGNALS = {"oem_dms_certification", "oem_retail_strategy", "major_recall", "sales_shift", "launch"}
 ROLES = ["acquirer", "target", "subject", "certified", "other"]
@@ -111,8 +111,9 @@ def load_config(path: Path) -> dict:
     unknown = [r for r in regions if str(r).strip().lower() not in by_lower]
     if unknown:
         raise ConfigError(f"{path.name}: unknown region(s) {', '.join(map(str, unknown))} (use: {', '.join(REGIONS)})")
+    contact = str(cfg.get("contact") or "").strip()
     return {"recipients": [str(r) for r in recipients], "send_hour": hour, "timezone": tz, "watchlist": parse_watchlist(cfg.get("watchlist")),
-            "regions": [by_lower[str(r).strip().lower()] for r in regions]}
+            "regions": [by_lower[str(r).strip().lower()] for r in regions], "contact": contact}
 
 
 def load_rules(path: Path) -> dict:
@@ -575,12 +576,12 @@ def classify_rules(story: dict, ctx: RulesContext) -> dict:
 # ---------------------------------------------------------------- classify: AI (optional)
 
 SIGNAL_DEFS = """Company signals (about a specific dealer group, dealer, distributor or OEM):
-- acquisition: a company buys, merges with, or is bought by another (dealerships, stores, groups). Give roles: acquirer and target.
+- acquisition: a company buys, merges with, or is bought by another (dealerships, stores, groups), including a buy-sell, private equity investment in a dealer group, or a family ownership transition. Give roles: acquirer and target.
 - closure: a store/dealership closes, a franchise is lost or terminated, a group goes bankrupt, or a company announces a restructuring, layoffs or cost cuts.
 - new_store: a new dealership, showroom or store opens or breaks ground.
 - market_entry: a brand or company enters a new country/market, or appoints a distributor/importer.
 - competitor_selected: a dealer or group selects, signs with, or rolls out a competing dealer software provider (listed below).
-- leadership_change: a senior executive (CEO, CIO, CTO, CFO, COO, president, head of digital/IT) is appointed or leaves.
+- leadership_change: a senior executive (CEO, CIO, CTO, CFO, COO, president, dealer principal, controller, fixed operations director, head of digital/IT) is appointed or leaves.
 - tech_investment: a dealer, group or OEM invests in retail technology, digital retail, AI, software or IT modernisation.
 Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - oem_dms_certification: an OEM certifies or approves a dealer management system (DMS) vendor for its dealers. Mark the certified vendor with role "certified".
@@ -590,7 +591,8 @@ Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - launch: a new model or EV launch, or a launch date announced.
 Market signals:
 - competitor_incident: an outage, cyberattack, breach, lawsuit or regulatory action involving a competing dealer software provider.
-- regulation: a law, regulation, tariff or policy change affecting auto dealers or vehicle sales."""
+- regulation: a law, regulation, tariff or policy change affecting auto dealers or vehicle sales.
+- vendor_news: other news about our company or a competing dealer software provider: a dealer or OEM choosing our company, product launches, partnerships, funding, acquisitions, pricing, layoffs or leadership changes. Name the provider as a company with role "subject"."""
 
 
 def system_prompt(rules: dict) -> str:
@@ -814,11 +816,13 @@ ROUTING = {
     "tech_investment": ("potential_growth", FALL, "new_business"),
     "oem_dms_certification": (FALL, _cert_brand, _cert_other),
     "oem_retail_strategy": (FALL, _retail, "industry_development"),
-    "major_recall": (FALL, "potential_growth", None),
-    "sales_shift": (FALL, _sales, "industry_development"),
-    "launch": (FALL, "potential_growth", "industry_development"),
+    # Watched brands: only retail strategy, certification and network news. Launches, recalls and sales are left out.
+    "major_recall": (FALL, None, None),
+    "sales_shift": (FALL, None, "industry_development"),
+    "launch": (FALL, None, "industry_development"),
     "competitor_incident": ("industry_development", "industry_development", "new_business"),
     "regulation": ("industry_development", "industry_development", "industry_development"),
+    "vendor_news": ("industry_development", "industry_development", "industry_development"),
 }
 ROLE_ORDER = ["acquirer", "target", "certified", "subject", "other"]
 
@@ -856,6 +860,22 @@ def cert_party(tag: dict, rules: dict) -> str | None:
     return "other"
 
 
+def vendor_kind(tag: dict, rules: dict) -> tuple[str, str] | None:
+    """("us", "Tekion") or ("competitor", name) when the story is about us or a competing software provider."""
+    us = {"name": rules["us"]["name"], "aliases": rules["us"].get("aliases", [])}
+    found = None
+    for c in tag["companies"]:
+        if c["role"] == "other":
+            continue
+        n = norm_company(c["name"])
+        if n in _names(us):
+            return "us", us["name"]
+        for comp in rules["competitors"]:
+            if not found and n in _names({"name": comp["name"], "aliases": comp.get("aliases", [])}):
+                found = ("competitor", comp["name"])
+    return found
+
+
 def in_regions(tag: dict, regions: list[str] | None) -> bool:
     return not regions or tag.get("region") in (None, "Global", "Unknown") or tag["region"] in regions
 
@@ -870,7 +890,8 @@ def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | No
     ctx = {"role": None, "cert": cert_party(tag, rules), "direction": tag["direction"]}
     company_hit, brand_hit = match_watchlist(tag, watchlist)
     local = in_regions(tag, regions)
-    if not local and not company_hit and tag["signal"] != "competitor_incident":
+    if not local and not company_hit and tag["signal"] not in ("competitor_incident", "competitor_selected", "vendor_news") \
+            and not vendor_kind(tag, rules):
         return None
 
     def cell(c, extra=None):
@@ -892,10 +913,25 @@ def route(tag: dict, watchlist: list[dict], rules: dict, regions: list[str] | No
     return (r, None) if r and r != FALL else None
 
 
+def lead_name(c: dict, rules: dict) -> str:
+    """The company an item is about, for its label."""
+    if c.get("matched"):
+        return c["matched"]
+    if c.get("vendor"):
+        return c["vendor"][1]
+    for role in ("acquirer", "subject", "target", "certified"):
+        for co in c["tag"]["companies"]:
+            if co["role"] == role:
+                return co["name"]
+    return (c["tag"]["brands"] or [""])[0]
+
+
 def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
-    """Two sections. Existing accounts: every story about a watchlist name (labelled Risk or Growth where the
-    routing says so). New accounts: prospect stories (routed to new business) about anyone else. Other stories
-    are left out. Then confidence gates, Priority, ordering, a per-outlet cap and section caps.
+    """Three sections:
+    - Existing accounts: every story about a watchlist name.
+    - New accounts: prospect stories (routed to new business) about anyone else, in the team's regions.
+    - Tekion and competitors: stories about us (listed first) or a competing dealer software provider.
+    Then confidence gates, Priority, ordering, a per-outlet cap and section caps.
     `history` is [{company, key, at}] from earlier emails."""
     s = rules["settings"]
     brand_names = {norm_company(b) for b in rules["brands"]}
@@ -904,29 +940,32 @@ def rank(candidates: list[dict], rules: dict, history: list[dict]) -> dict:
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
         conf = c["tag"]["confidence"]
+        c.setdefault("vendor", vendor_kind(c["tag"], rules))
         if c.get("matched"):
-            if conf < s["watchlist_confidence_gate"]:
-                continue
-            section = "existing_accounts"
-            c["label"] = LABELS.get(c["section"]) if conf >= s["confidence_gate"] else None
-        elif c["section"] == "new_business" and conf >= s["confidence_gate"]:
-            section, c["label"] = "new_accounts", None
+            section, gate = "existing_accounts", s["watchlist_confidence_gate"]
+        elif c["vendor"]:
+            section, gate = "tekion_competitors", s["watchlist_confidence_gate"]
+        elif c["section"] == "new_business":
+            section, gate = "new_accounts", s["confidence_gate"]
         else:
             continue
-        c["priority"] = any(
+        if conf < gate:
+            continue
+        # Label: company · region (region left out when unknown).
+        region = c["tag"].get("region") or ""
+        c["lead"] = " · ".join(x for x in (lead_name(c, rules), region if region != "Unknown" else "") if x)
+        c["priority"] = section != "tekion_competitors" and any(
             (n := norm_company(co["name"])) not in brand_names and n in earlier and co["role"] != "other"
             for co in c["tag"]["companies"]
         )
         out[section].append(c)
     per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (not c["priority"], c.get("label") is None, -c["tag"]["confidence"], c["story"]["tier"],
-                                     -c["story"]["outlets"], -c["story"]["published"].timestamp()))
+        out[sec].sort(key=lambda c: (not (c.get("vendor") and c["vendor"][0] == "us"), not c["priority"], -c["tag"]["confidence"],
+                                     c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept = []
         for c in out[sec]:
-            host = urlsplit(c["story"]["url"]).hostname or c["story"]["publisher"]
-            if c["story"].get("is_aggregator"):
-                host = c["story"]["publisher"]
+            host = c["story"]["publisher"] if c["story"].get("is_aggregator") else (urlsplit(c["story"]["url"]).hostname or c["story"]["publisher"])
             if per_outlet.get(host, 0) >= s["max_per_outlet"]:
                 continue
             per_outlet[host] = per_outlet.get(host, 0) + 1
@@ -943,50 +982,44 @@ def _sentence(s: str) -> str:
     return s if not s or s[-1] in ".!?" else s + "."
 
 
-def _count(n: int, one: str, many: str) -> str:
-    return f"{n} {one if n == 1 else many}"
-
-
 def _outlet(story: dict, tag: dict) -> str:
     """The publication's name. Exa items carry a bare domain; the AI supplies the usual name when it can."""
     pub = story["publisher"]
     return tag.get("outlet") or pub if "." in pub else pub
 
 
-def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | None, degraded: bool) -> tuple[str, str, str]:
+def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | None, degraded: bool,
+            contact: str = "") -> tuple[str, str, str]:
     date_label = f"{local_now:%A}, {local_now.day} {local_now:%B}"
     total = sum(len(v) for v in sections.values())
     if window_start is None or (local_now - window_start.astimezone(local_now.tzinfo)) <= dt.timedelta(hours=24.5):
-        period = "from the past 24 hours"
+        period = "in the last 24 hours"
     else:
         ws = window_start.astimezone(local_now.tzinfo)
-        period = f"since the last summary on {ws:%A}, {ws.day} {ws:%B}"
+        period = f"since the last update on {ws:%A}, {ws.day} {ws:%B}"
 
     font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
     head = (f'<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>'
             f'<body style="margin:0;padding:0;background:#ffffff;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
             f'<tr><td style="padding:24px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             f'style="max-width:640px;{font}font-size:15px;line-height:1.5;color:#1f2328;"><tr><td>')
-    footer_line = "Reply to this email to add a company to the watchlist or to share feedback."
-    footer_html = f'<p style="margin:28px 0 0;color:#57606a;font-size:13px;">{footer_line}</p>'
+    who = contact or "the team that runs this report"
+    footer_line = (f"This is an automated email, so replies aren't read. To add a company to the watchlist "
+                   f"or share feedback, message {who} on Slack or by email.")
+    footer_html = f'<p style="margin:28px 0 0;color:#57606a;font-size:13px;">{html.escape(footer_line)}</p>'
     tail = "</td></tr></table></td></tr></table></body></html>"
     partial_html = '<p style="margin:0 0 16px;color:#57606a;font-size:13px;">Coverage was partial today.</p>' if degraded else ""
     partial_text = "Coverage was partial today.\n\n" if degraded else ""
 
+    subject = f"Automotive market update – {date_label}"
     if total == 0:
-        line = f"There were no relevant automotive developments {period.replace('from ', 'in ', 1)}."
-        subject = f"Automotive sales signals – {date_label} (no new developments)"
-        return (subject, f'{head}<p style="margin:0 0 16px;">Good morning,</p>{partial_html}<p style="margin:0;">{html.escape(line)}</p>{footer_html}{tail}',
-                f"Good morning,\n\n{partial_text}{line}\n\n{footer_line}\n")
+        line = f"Nothing relevant happened in the automotive world {period}."
+        return (subject, f'{head}<p style="margin:0 0 16px;">Hi Team,</p>{partial_html}<p style="margin:0;">{html.escape(line)}</p>{footer_html}{tail}',
+                f"Hi Team,\n\n{partial_text}{line}\n\n{footer_line}\n")
 
-    n_old, n_new = len(sections["existing_accounts"]), len(sections["new_accounts"])
-    parts = [p for p in (_count(n_old, "existing account", "existing accounts") if n_old else "",
-                         _count(n_new, "new account", "new accounts") if n_new else "") if p]
-    subject = f"Automotive sales signals – {date_label}: {', '.join(parts)}"
-    about = " and ".join(p for p in (f"{n_old} about existing accounts" if n_old else "", f"{n_new} about new accounts" if n_new else "") if p)
-    intro = f"Below are {_count(total, 'automotive development', 'automotive developments')} {period}: {about}."
-    h = [head, '<p style="margin:0 0 16px;">Good morning,</p>', partial_html, f'<p style="margin:0 0 8px;">{html.escape(intro)}</p>']
-    t = ["Good morning,", "", partial_text + intro, ""]
+    intro = f"Here's what happened in the automotive world {period}."
+    h = [head, '<p style="margin:0 0 16px;">Hi Team,</p>', partial_html, f'<p style="margin:0 0 8px;">{html.escape(intro)}</p>']
+    t = ["Hi Team,", "", partial_text + intro, ""]
     seen_impl: set[str] = set()
     for sec in SECTIONS:
         if not sections[sec]:
@@ -996,8 +1029,7 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
         for c in sections[sec]:
             story, tag = c["story"], c["tag"]
             fact = _sentence(tag["summary"] or story["title"])
-            tags_ = [x for x in ("Priority" if c["priority"] else "", c.get("matched") or "", c.get("label") or "") if x]
-            lead = " · ".join(tags_)
+            lead = ("Priority: " if c["priority"] else "") + c.get("lead", "")
             impl = _sentence(tag["implication"]) if tag["implication"] else ""
             if impl.lower() in seen_impl:
                 impl = ""  # never print the same line twice in one email
@@ -1098,7 +1130,7 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     sections = rank(candidates, rules, state["history"])
     degraded = len(ok) < 0.4 * attempted or fallback > 0
     local_now = now.astimezone(ZoneInfo(cfg["timezone"]))
-    subject, html_body, text_body = compose(sections, local_now, window_start if last else None, degraded)
+    subject, html_body, text_body = compose(sections, local_now, window_start if last else None, degraded, cfg.get("contact", ""))
     included = [c for sec in SECTIONS for c in sections[sec]]
     log(f"Email: {len(included)} items ({', '.join(f'{SECTION_TITLES[k]} {len(v)}' for k, v in sections.items() if v) or 'quiet day'})")
     return {"subject": subject, "html": html_body, "text": text_body, "included": included, "relevant": relevant, "tags": tags,

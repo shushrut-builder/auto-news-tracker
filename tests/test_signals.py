@@ -236,10 +236,11 @@ def route(**t):
     ("competitor_selected", "potential_risk", "lower_priority", "lower_priority"),
     ("leadership_change", "potential_risk", "new_business", "new_business"),
     ("tech_investment", "potential_growth", "new_business", "new_business"),
-    # A watched name named as the company in a brand story ("Toyota recalls ...") is a watchlist match too.
+    # A watched name named as the company in a brand story is a watchlist match too.
     ("oem_retail_strategy", "potential_growth", "potential_growth", "industry_development"),
-    ("major_recall", "potential_growth", "potential_growth", None),
-    ("launch", "potential_growth", "potential_growth", "industry_development"),
+    # Watched brands: launches and recalls are left out.
+    ("major_recall", None, None, None),
+    ("launch", None, None, "industry_development"),
     ("competitor_incident", "industry_development", "industry_development", "new_business"),
     ("regulation", "industry_development", "industry_development", "industry_development"),
 ])
@@ -261,8 +262,7 @@ def test_routing_certification_and_sales():
     assert route(signal="oem_dms_certification", brands=["Kia"], companies=cert("Tekion")) == "potential_growth"
     assert route(signal="oem_dms_certification", companies=cert("Tekion")) == "new_business"
     assert route(signal="oem_dms_certification", companies=cert("Other Vendor")) == "industry_development"
-    assert route(signal="sales_shift", brands=["Kia"], direction="falling") == "potential_risk"
-    assert route(signal="sales_shift", brands=["Kia"], direction="rising") == "potential_growth"
+    assert route(signal="sales_shift", brands=["Kia"], direction="falling") is None  # brand sales figures are left out
 
 
 def test_routing_without_watchlist():
@@ -272,7 +272,7 @@ def test_routing_without_watchlist():
 
 
 def test_routing_reports_matched_name():
-    assert S.route(tag(signal="launch", brands=["Kia"]), CTX_WATCH, RULES) == ("potential_growth", "Kia")
+    assert S.route(tag(signal="oem_retail_strategy", brands=["Kia"]), CTX_WATCH, RULES) == ("potential_growth", "Kia")
 
 
 # ---------------------------------------------------------------- ranking
@@ -284,18 +284,36 @@ def _cand(section, conf, companies=(), tier=2, matched=None, host="x.com"):
             "section": section, "matched": matched}
 
 
-def test_two_sections_gates_and_caps():
-    out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9, host="a.com"),
+def test_sections_gates_labels_and_caps():
+    out = S.rank([_cand("new_business", 0.5), _cand("new_business", 0.9, ["Dealer Group D"], host="a.com"),
                   _cand("industry_development", 0.95, host="b.com")], RULES, [])
     # Low confidence and background stories are left out; only prospects go to New accounts.
-    assert len(out["new_accounts"]) == 1 and out["existing_accounts"] == []
-    # Watchlist stories go to Existing accounts with a Risk / Growth label when confident.
-    out = S.rank([_cand("potential_risk", 0.9, matched="AutoNation"), _cand("potential_growth", 0.6, matched="Kia", host="a.com"),
-                  _cand("industry_development", 0.8, matched="Toyota", host="b.com"), _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES, [])
-    labels = [(c["matched"], c["label"]) for c in out["existing_accounts"]]
-    assert labels == [("AutoNation", "Risk"), ("Toyota", None), ("Kia", None)]  # Ford below the watchlist gate
+    assert [c["lead"] for c in out["new_accounts"]] == ["Dealer Group D"] and out["existing_accounts"] == []
+    # Watchlist stories go to Existing accounts, labelled with the account and the event type.
+    an = _cand("potential_risk", 0.9, matched="AutoNation")
+    an["tag"]["region"] = "North America"
+    out = S.rank([an, _cand("industry_development", 0.6, matched="Kia", host="a.com"),
+                  _cand("potential_risk", 0.4, matched="Ford", host="c.com")], RULES, [])
+    assert [c["lead"] for c in out["existing_accounts"]] == ["AutoNation · North America", "Kia"]  # Ford below the gate; no region when unknown
     many = [_cand("new_business", 0.9 - i / 100, host=f"h{i}.com") for i in range(9)]
     assert len(S.rank(many, RULES, [])["new_accounts"]) == 6
+
+
+def test_tekion_and_competitor_news_has_its_own_section():
+    def vendor(name, signal, conf=0.9, host="v.com"):
+        c = _cand("industry_development", conf, host=host)
+        c["tag"] = tag(signal=signal, confidence=conf, companies=[{"name": name, "role": "subject"}])
+        return c
+    cands = [vendor("CDK", "competitor_incident"), vendor("Tekion", "vendor_news", host="w.com"),
+             vendor("Reynolds and Reynolds", "competitor_selected", host="y.com")]
+    out = S.rank(cands, RULES, [])
+    leads = [c["lead"] for c in out["tekion_competitors"]]
+    assert leads[0] == "Tekion"  # our own news first
+    assert set(leads[1:]) == {"CDK Global", "Reynolds and Reynolds"}
+    assert out["new_accounts"] == [] and out["existing_accounts"] == []
+    # From any region: a competitor's news abroad still counts.
+    t_ = tag(signal="vendor_news", companies=[{"name": "Keyloop", "role": "subject"}], region="Europe")
+    assert S.route(t_, CTX_WATCH, RULES, ["North America"]) is not None
 
 
 def test_at_most_two_items_per_outlet():
@@ -371,12 +389,16 @@ def test_ai_failure_falls_back_to_rules_for_that_batch_only(monkeypatch):
 
 def _write_config(tmp_path, watchlist=True):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("recipients: [team@example.com, rep@example.com]\nsend_hour: 8\ntimezone: America/Chicago\n"
+    cfg.write_text("recipients: [team@example.com, rep@example.com]\nsend_hour: 8\ntimezone: America/Chicago\ncontact: Shushrut\n"
                    + ("watchlist:\n  - Lithia Motors | Lithia\n  - Toyota\n" if watchlist else ""))
     rules = tmp_path / "rules.yaml"
     import yaml
     raw = yaml.safe_load((ROOT / "rules.yaml").read_text(encoding="utf-8"))
     raw["sources"] = [{k: v for k, v in s.items() if k != "file"} for s in FIXTURE_SOURCES]
+    # The saved fixture day only has weak keyword-rule matches (confidence 0.5). Lower the gates so these
+    # whole-run tests send a real email with items, not a quiet-day line.
+    raw["settings"]["confidence_gate"] = 0.5
+    raw["settings"]["watchlist_confidence_gate"] = 0.4
     rules.write_text(yaml.safe_dump(raw))
     return cfg, rules
 
@@ -443,7 +465,8 @@ def test_preview_sends_nothing_and_writes_files(tmp_path):
     assert box.attempts == 0
     html_out = (tmp_path / "out" / "preview.html").read_text(encoding="utf-8")
     text_out = (tmp_path / "out" / "preview.txt").read_text(encoding="utf-8")
-    assert "Good morning," in html_out and text_out.startswith("Subject: Automotive sales signals – ")
+    assert "Hi Team," in html_out and text_out.startswith("Subject: Automotive market update – ")
+    assert "Here's what happened in the automotive world in the last 24 hours." in text_out and "NEW ACCOUNTS" in text_out
     assert not (tmp_path / "sent.json").exists()  # previews don't touch state
 
 
@@ -458,9 +481,11 @@ def test_email_format(tmp_path):
     box = Outbox()
     _run(tmp_path, _at_local(8), box, watchlist=False)
     mail = box.sent[0]
-    assert mail["subject"].startswith("Automotive sales signals – ")
+    assert mail["subject"].startswith("Automotive market update – ")
+    assert mail["text"].startswith("Hi Team,\n\nHere's what happened in the automotive world in the last 24 hours.")
+    assert "NEW ACCOUNTS" in mail["text"]
     assert "Existing accounts" not in mail["html"]  # no watchlist, so no existing-accounts section
-    assert "Reply to this email" in mail["text"]
+    assert "replies aren't read" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
     assert " should " not in mail["text"].lower()
     import re
     urls = re.findall(r"\(([^:()]+): (https?://\S+)\)", mail["text"])

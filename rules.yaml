@@ -10,16 +10,40 @@ us:
   aliases:
   - Tekion Corp
   - Tekion ARC
-competitors:
+competitors:   # dealer software providers that compete with us (DMS, CRM, service)
 - name: CDK Global
   aliases:
   - CDK
+  - Elead
 - name: Reynolds and Reynolds
   aliases:
   - Reynolds
 - name: Dealertrack
   aliases:
   - Cox Automotive Dealertrack
+  - VinSolutions
+  - Xtime
+- name: PBS Systems
+  aliases:
+  - PBS
+- name: Quorum Information Technologies
+  aliases:
+  - Quorum DMS
+  - XSELLERATOR
+- name: Dominion DMS
+  aliases:
+  - Dominion Dealer Solutions
+  - VUE DMS
+- name: Auto/Mate
+  aliases:
+  - Automate DMS
+- name: DealerSocket
+  aliases:
+  - Solera DealerSocket
+- name: Keyloop
+- name: Pinewood.AI
+  aliases:
+  - Pinewood Technologies
 sources:
 - id: prn-auto
   name: PR Newswire
@@ -250,7 +274,13 @@ sources:
 - id: exa-competitor_incident
   name: Exa
   type: exa
-  query: 'CDK Global, Reynolds and Reynolds or Dealertrack outage, cyberattack or lawsuit'
+  query: 'dealer software provider CDK Global, Reynolds and Reynolds, Dealertrack, PBS Systems, DealerSocket or Keyloop outage, lawsuit, acquisition, layoffs or price change'
+  tier: 3
+  auto_only: false
+- id: exa-tekion
+  name: Exa
+  type: exa
+  query: 'Tekion automotive retail cloud dealer management system news'
   tier: 3
   auto_only: false
 - id: gn-acquisition
@@ -279,7 +309,7 @@ sources:
   auto_only: false
 - id: gn-competitor_selected
   name: Google News
-  url: 'https://news.google.com/rss/search?q=%28dealer+OR+dealership%29+%28selects+OR+chooses+OR+%22rolls+out%22%29+%28CDK+OR+Reynolds+OR+Dealertrack%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  url: 'https://news.google.com/rss/search?q=%28dealer+OR+dealership+OR+%22dealer+group%22%29+%28selects+OR+chooses+OR+%22rolls+out%22+OR+%22switches+to%22+OR+partners%29+%28CDK+OR+Reynolds+OR+Dealertrack+OR+Tekion+OR+%22PBS+Systems%22+OR+DealerSocket+OR+Keyloop+OR+Pinewood%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
   type: google_news
   tier: 3
   auto_only: false
@@ -321,7 +351,13 @@ sources:
   auto_only: false
 - id: gn-competitor_incident
   name: Google News
-  url: 'https://news.google.com/rss/search?q=%28CDK+OR+%22Reynolds+and+Reynolds%22+OR+Dealertrack%29+%28outage+OR+cyberattack+OR+lawsuit+OR+breach%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  url: 'https://news.google.com/rss/search?q=%28CDK+OR+%22Reynolds+and+Reynolds%22+OR+Dealertrack+OR+%22PBS+Systems%22+OR+DealerSocket+OR+Keyloop+OR+%22Dominion+DMS%22%29+%28outage+OR+cyberattack+OR+lawsuit+OR+breach+OR+layoffs+OR+acquires+OR+price%29+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
+  type: google_news
+  tier: 3
+  auto_only: false
+- id: gn-tekion
+  name: Google News
+  url: 'https://news.google.com/rss/search?q=Tekion+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen'
   type: google_news
   tier: 3
   auto_only: false
@@ -357,7 +393,7 @@ prefilter:
   - '\bev\b|\bevs\b|electric vehicle|electric suv|electric car|hybrid vehicle'
   - '(car|vehicle|auto|passenger vehicle|two-wheeler|motorcycle) (sales|registrations|deliveries|exports)'
   - '\bnhtsa\b|motor vehicle|fmvss|\bsmmt\b|\bfada\b|\bsiam\b'
-  - 'CDK|Reynolds|Dealertrack|Tekion|Cox Automotive'
+  - 'CDK|Reynolds|Dealertrack|VinSolutions|Xtime|Elead|PBS Systems|Quorum|Dominion DMS|Dominion Dealer|VUE DMS|Auto/Mate|DealerSocket|Keyloop|Pinewood|Tekion|Cox Automotive'
   - '\b(Toyota|Lexus|Honda|Nissan|Mazda|Subaru|Suzuki|Mitsubishi Motors|Isuzu|Hyundai|Kia|Genesis Motor|Ford|General Motors|GM|Chevrolet|Stellantis|Jeep|Tesla|Rivian|BMW|Mercedes|Volkswagen|Audi|Porsche|Volvo
     Cars|Renault|Jaguar Land Rover|JLR|Tata Motors|Mahindra|Maruti|Ashok Leyland|Hero MotoCorp|Bajaj Auto|TVS Motor|BYD|Geely|Chery|MG Motor|Al-Futtaim|Abdul Latif Jameel|Al Tayer|Juffali)\b'
   exclude_url:
@@ -370,17 +406,18 @@ signals:
     implication: 'OEM certification determines which dealer management systems that brand''s dealers can adopt.'
   competitor_incident:
     patterns:
-    - '(CDK|Reynolds|Dealertrack).{0,80}(outage|cyber|hack|breach|ransomware|lawsuit|antitrust|settle)'
-    - '(outage|cyberattack|breach|ransomware).{0,80}(CDK|Reynolds|Dealertrack)'
+    - '(CDK|Reynolds|Dealertrack|VinSolutions|Xtime|Elead|PBS Systems|Quorum|Dominion DMS|Dominion Dealer|VUE DMS|Auto/Mate|DealerSocket|Keyloop|Pinewood).{0,80}(outage|cyber|hack|breach|ransomware|lawsuit|antitrust|settle)'
+    - '(outage|cyberattack|breach|ransomware).{0,80}(CDK|Reynolds|Dealertrack|VinSolutions|Xtime|Elead|PBS Systems|Quorum|Dominion DMS|Dominion Dealer|VUE DMS|Auto/Mate|DealerSocket|Keyloop|Pinewood)'
     implication: Incidents at a competing provider often prompt affected dealers to review their software vendor.
   competitor_selected:
     patterns:
-    - '(selects?|chooses?|signs?|partners? with|deploys?|rolls? out|implements?|migrates? to|switch\w* to).{0,60}(CDK|Reynolds|Dealertrack)'
+    - '(selects?|chooses?|signs?|partners? with|deploys?|rolls? out|implements?|migrates? to|switch\w* to).{0,60}(CDK|Reynolds|Dealertrack|VinSolutions|Xtime|Elead|PBS Systems|Quorum|Dominion DMS|Dominion Dealer|VUE DMS|Auto/Mate|DealerSocket|Keyloop|Pinewood)'
     implication: A multi-year commitment to a competing platform reduces near-term switching opportunity.
   acquisition:
     patterns:
     - '\b(acquir\w*|buys|bought|purchase[sd]?|takes over|completes purchase of)\b.{0,60}\b(dealerships?|dealer|stores?|group|rooftops?|stake|company|business|franchises?|automotive|motors|auto|cadillac|toyota|honda|ford|chevrolet|nissan|hyundai|kia|bmw|mercedes|lexus|jeep|subaru|mazda|volkswagen|audi|porsche)\b'
     - '\bmerger\b|\bmerges? with\b|takeover|to be acquired|acquired by|sells? .{0,40}(dealership|stores|group)'
+    - '\bbuy-sell\b|blue.sky|private equity.{0,60}(dealer|auto group)|(dealer|auto group).{0,60}private equity|(next|second|third) generation.{0,40}(dealer|ownership)'
     implication: Ownership changes typically lead to a review of the systems used across the combined stores.
   closure:
     patterns:
@@ -403,7 +440,7 @@ signals:
     implication: Market entries create new dealer networks that need retail systems in place.
   leadership_change:
     patterns:
-    - '(appoints?|names?|hires?|promotes?|taps?)\b.{0,80}\b(ceo|cio|cto|cfo|coo|president|chief|head of|vice president|vp|director)\b'
+    - '(appoints?|names?|hires?|promotes?|taps?)\b.{0,80}\b(ceo|cio|cto|cfo|coo|president|chief|head of|vice president|vp|director|controller|dealer principal|fixed ops|fixed operations)\b'
     - '\b(ceo|cio|cto|cfo|president)\b.{0,40}(steps down|resigns|retires|departs|to step down)'
     implication: Incoming executives frequently review existing vendor relationships.
   tech_investment:
@@ -435,6 +472,10 @@ signals:
     - '\bintroduc\w+ .{0,30}(model|suv|ev|sedan|truck)'
     - 'all-new|new (model|ev|suv)'
     implication: 'New models bring new inventory, pricing and service processes to the brand''s dealers.'
+  vendor_news:
+    patterns:
+    - '\b(Tekion|CDK|Reynolds|Dealertrack|VinSolutions|Xtime|Elead|PBS Systems|Quorum|Dominion DMS|Dominion Dealer|VUE DMS|Auto/Mate|DealerSocket|Keyloop|Pinewood)\b'
+    implication: News about a dealer software provider shapes how dealers compare their options.
   regulation:
     patterns:
     - 'regulat|\bpolicy\b|\b(new|state|federal|proposed) (law|bill)s?\b|\b(new|final|proposed|federal|ftc|cars|safeguards) rules?\b|\bftc\b|\bmandate\b|tariff|import duty|\bcompliance\b|emission standard'
@@ -539,6 +580,7 @@ settings:
   caps:
     existing_accounts: 10
     new_accounts: 6
+    tekion_competitors: 5
   retry_hours: 3
   ai:
     model: claude-haiku-5-5

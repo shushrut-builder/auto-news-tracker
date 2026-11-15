@@ -8,6 +8,9 @@ recipients:
 send_hour: 8
 timezone: America/Chicago
 
+# Who the team contacts to add a company or share feedback (the email is no-reply).
+contact: Shushrut
+
 # Optional. Regions the team sells into: North America, Europe, India, Middle East, Asia Pacific,
 # Latin America, Africa. News elsewhere is left out unless it's about a watchlist company.
 # Delete the list to cover every region.
