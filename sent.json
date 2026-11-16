@@ -132,6 +132,19 @@
    "recipients": 1,
    "status": "ok",
    "untagged": 0
+  },
+  {
+   "ai_errors": [],
+   "at": "2026-11-16T07:41:00.538547+00:00",
+   "failed_sources": [
+    "khaleej-times",
+    "motor-trader"
+   ],
+   "items": 22,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok",
+   "untagged": 0
   }
  ],
  "sent_items": []
