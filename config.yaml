@@ -12,7 +12,7 @@ timezone: America/Chicago
 contact: Shushrut
 
 # Optional. Regions the team sells into: North America, Europe, India, Middle East, Asia Pacific,
-# Latin America, Africa. News elsewhere is left out, except news about Tekion and its competitors.
-# Delete the list to cover every region.
-regions:
-  - North America
+# Latin America, Africa. When set, news elsewhere is left out (except Tekion and competitor news).
+# Not set: news from every region, each item labelled with its region in the email.
+# regions:
+#   - North America
