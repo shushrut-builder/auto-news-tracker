@@ -401,6 +401,7 @@ prefilter:
   - '\b\d+\s+(\w+\s+){0,3}(car|cars|suv|suvs|ev|evs|model|models)\s+(and\s+\w+\s+)?launch(es)?\b|\blaunches:\s|\bupcoming (cars|suvs|launches)\b'
   - '\?\s*$'
   - '\b(scooters?|motorcycles?|motorbikes?|two-wheelers?|e-bikes?|bikes?)\b'
+  - '\b(Harley-Davidson|Ducati|Royal Enfield|Caterpillar|John Deere|Komatsu|Kubota)\b'   # motorcycle and equipment dealers
   - '\bpatent(s|ed)?\b'
   include:
   - 'dealer|dealership|dealer group|auto group|automotive group|showroom|rooftop'

@@ -591,3 +591,19 @@ def test_industry_trends_variety_then_coverage_capped_at_ten():
     assert out == [big_launch, regulation, insurer_deal, small_launch]
     many = [trend("launch", outlets=i, host=f"h{i}.com") for i in range(15)]
     assert len(S.rank(many, RULES)["industry_trends"]) == 10
+
+
+def test_name_check_accepts_close_names_but_not_made_up_ones():
+    text = "Jardine\u2019s third takeover bid for Cycle & Carriage succeeds with 95% stake"
+    assert S.name_in_text("Jardine Matheson", text)
+    assert S.name_in_text("Cycle & Carriage Bintang Bhd", text)
+    assert not S.name_in_text("Sime Darby", text)
+    assert not S.name_in_text("Automotive Group Holdings", text)  # only generic words
+
+
+def test_motorcycle_and_equipment_dealers_are_filtered():
+    kept, dropped = S.prefilter([_item("Harley-Davidson dealerships across the US will close for 24 hours", "https://x.com/h"),
+                                 _item("Sime Darby buys Gough Group, a Caterpillar dealer", "https://x.com/c")], RULES)
+    assert kept == [] and dropped == 2
+    p = S.system_prompt(RULES)
+    assert "heavy-equipment dealers" in p and "more than 7 days before" in p

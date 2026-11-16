@@ -609,7 +609,7 @@ def system_prompt(rules: dict) -> str:
 Our company: {us}. Our products: {products}.
 Competing dealer software providers: {comps}.
 
-For each item, decide whether it is relevant to B2B automotive retail (dealers, dealer groups, distributors, OEM retail and sales, dealer software). Consumer content (car reviews, buying advice, motorsport, deals, celebrity, general business news unrelated to auto retail) is relevant: false, with signal null.
+For each item, decide whether it is relevant to B2B automotive retail (dealers, dealer groups, distributors, OEM retail and sales, dealer software). Consumer content (car reviews, buying advice, motorsport, deals, celebrity, general business news unrelated to auto retail) is relevant: false, with signal null. This is about car and light-vehicle retail (commercial trucks count): motorcycle and other two-wheeler dealers, and construction, agricultural or heavy-equipment dealers (Caterpillar, John Deere), are relevant: false.
 
 Signals (choose exactly one for relevant items, the best fit):
 {SIGNAL_DEFS}
@@ -625,7 +625,7 @@ Rules:
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
 - region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
 - english: false if the title or snippet is not in English.
-- current: false if the item is not news from the past few days relative to "today" (an old article, an anniversary piece, an evergreen feature or cover story, or a recap of past events). The publishedAt date can be wrong; judge from the text too.
+- current: false if the item is not news from the past few days relative to "today" (an old article, an anniversary piece, an evergreen feature or cover story, or a recap of past events), or if the event itself happened more than 7 days before "today" even though the article is new (for example "launched on 1 October" in a story published in mid-November). The publishedAt date can be wrong; judge from the text too.
 - buyer: true if the main company the news is about is a business that would buy dealer software: a dealer, dealer group, distributor or importer, or a carmaker's sales and retail side. false for insurers, lenders, warranty or F&I product companies, parts suppliers, tech startups, software vendors and other businesses.
 - outlet: the publication's usual name (for example "The Edge Malaysia" for theedgemalaysia.com, "Automotive News" for autonews.com). If unsure, repeat the publisher given.
 - Return one result per input item, with the same id."""
@@ -662,10 +662,23 @@ class BatchFailed(Exception):
     pass
 
 
+GENERIC_NAME_WORDS = {"the", "and", "group", "motor", "motors", "auto", "autos", "automotive", "automobile", "automobiles",
+                      "holdings", "holding", "international", "company", "corporation", "corp", "inc", "ltd", "llc", "plc",
+                      "limited", "bhd", "berhad", "co", "industries", "global", "dealership", "dealer", "cars"}
+
+
 def name_in_text(name: str, text: str) -> bool:
-    n, t = name.lower().strip(), text.lower()
+    """Guard against made-up names: the name, or at least one distinctive word of it, must be in the article.
+    "Jardine Matheson" passes for a story that says "Jardine's"; a company with no word in the text doesn't."""
+    n = name.lower().strip().replace("’", "'")
+    t = text.lower().replace("’", "'")
+    if not n:
+        return False
     core = re.sub(r"[,.]?\s+(inc|ltd|llc|plc|corp|corporation|co|limited)\.?$", "", n)
-    return bool(n) and (n in t or (len(core) >= 2 and core in t))
+    if n in t or (len(core) >= 2 and core in t):
+        return True
+    words = [w for w in re.findall(r"[a-z0-9]+", core) if len(w) >= 3 and w not in GENERIC_NAME_WORDS]
+    return any(re.search(rf"\b{re.escape(w)}\b", t) for w in words)
 
 
 def ai_tag_batch(client, rules: dict, batch: list[dict]) -> tuple[dict, list[str]]:
