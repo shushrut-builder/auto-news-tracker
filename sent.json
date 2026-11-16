@@ -108,6 +108,18 @@
    "recipients": 1,
    "status": "ok",
    "untagged": 0
+  },
+  {
+   "ai_errors": [],
+   "at": "2026-11-16T07:31:51.245183+00:00",
+   "failed_sources": [
+    "khaleej-times"
+   ],
+   "items": 24,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok",
+   "untagged": 0
   }
  ],
  "sent_items": []
