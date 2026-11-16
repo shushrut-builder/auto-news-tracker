@@ -270,13 +270,14 @@ def test_regions():
 # ---------------------------------------------------------------- ranking
 
 # The limits are off by default (every story is sent); these tests switch them on.
-LIMITED = {**RULES, "settings": {**RULES["settings"], "max_per_outlet": 2, "trends_one_per_type": True,
+LIMITED = {**RULES, "settings": {**RULES["settings"], "max_per_outlet": 2, "trends_one_per_type": True, "hot_news_gate": 0.6,
                                  "caps": {"industry_trends": 3, "account_news": 8, "competitors": 5, "tekion": 3}}}
 
 
 def test_limits_are_off_by_default():
     s = RULES["settings"]
     assert not s.get("caps") and not s.get("max_per_outlet") and not s.get("trends_one_per_type") and s["sent_memory_days"] == 0
+    assert not s.get("hot_news_gate")  # no confidence filter
 
 
 def _cand(section, conf, companies=(), tier=2, host="x.com", signal="acquisition"):
@@ -531,8 +532,9 @@ def test_industry_trends_first_one_per_type_capped_and_gated():
     assert sigs == ["oem_retail_strategy", "regulation", "market_trend"]  # signal order, one per type, at most 3
     assert S.SECTIONS[0] == "industry_trends"
     # Not hot news (general knowledge, explainer, opinion): left out of every section.
-    assert S.rank([trend("regulation", 0.4)], RULES)["industry_trends"] == []
-    assert S.rank([_cand("account_news", 0.4, ["Dealer Group D"])], RULES)["account_news"] == []
+    assert S.rank([trend("regulation", 0.4)], LIMITED)["industry_trends"] == []
+    assert S.rank([_cand("account_news", 0.4, ["Dealer Group D"])], LIMITED)["account_news"] == []
+    assert len(S.rank([trend("regulation", 0.2)], RULES)["industry_trends"]) == 1  # gate off by default
 
 
 def test_a_day_with_only_trends_is_not_a_quiet_day():

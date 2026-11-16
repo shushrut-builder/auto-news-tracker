@@ -624,8 +624,9 @@ settings:
   - sales_shift
   - launch
   - major_recall
-  # 0-1. Below this the story reads as general knowledge, an explainer or opinion rather than hot news.
-  hot_news_gate: 0.6
+  # Off for now: no story is dropped for a low confidence score. To turn it back on (0-1; below it a story
+  # reads as general knowledge, an explainer or opinion rather than hot news):
+  #   hot_news_gate: 0.6
   # Optional limits, all off for now so every story is sent. To turn them back on:
   #   max_per_outlet: 2          # at most this many items from one publication per email
   #   trends_one_per_type: true  # at most one launch, one regulation item, etc. in Industry trends

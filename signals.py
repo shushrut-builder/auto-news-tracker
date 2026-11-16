@@ -869,15 +869,14 @@ def lead_name(c: dict, rules: dict) -> str:
 
 
 def rank(candidates: list[dict], rules: dict) -> dict:
-    """Candidates already carry their section (see route). Here: the hot-news gate (general knowledge, explainers
-    and opinion are left out), labels and ordering by sales signal (settings.signal_order). Optional limits, all
-    off when unset: one item per type in Industry trends, a per-outlet cap and section caps. Nothing is marked
+    """Candidates already carry their section (see route). Here: labels and ordering by sales signal (settings.signal_order). Optional limits, all
+    off when unset: a hot-news gate on confidence, one item per type in Industry trends, a per-outlet cap and section caps. Nothing is marked
     as a priority: the team decides that."""
     s = rules["settings"]
     order = {sig: i for i, sig in enumerate(s.get("signal_order") or SIGNALS)}
     out = {sec: [] for sec in SECTIONS}
     for c in candidates:
-        if c["tag"]["confidence"] < s["hot_news_gate"]:
+        if s.get("hot_news_gate") and c["tag"]["confidence"] < s["hot_news_gate"]:  # off unless set
             continue
         # Label: company · region (region left out when unknown).
         region = c["tag"].get("region") or ""
