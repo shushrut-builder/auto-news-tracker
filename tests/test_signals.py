@@ -609,3 +609,17 @@ def test_motorcycle_and_equipment_dealers_are_filtered():
     assert kept == [] and dropped == 2
     p = S.system_prompt(RULES)
     assert "heavy-equipment dealers" in p and "more than 7 days before" in p
+
+
+def test_sales_signals_say_pitch_other_sections_why_it_matters():
+    import datetime as dt
+    sig = _cand("account_news", 0.9, ["West Herr"], signal="new_store")
+    sig["tag"]["implication"] = "Fresh store, fresh DMS and CRM decision. ARC fits."
+    sig["lead"] = "West Herr"
+    trend = _cand("industry_trends", 0.9, signal="regulation", host="b.com")
+    trend["tag"]["implication"] = "Dealers face new price disclosure rules."
+    trend["lead"] = "FTC"
+    secs = {s: [] for s in S.SECTIONS}
+    secs["account_news"], secs["industry_trends"] = [sig], [trend]
+    _, html_out, text = S.compose(secs, dt.datetime(2026, 11, 16, 8, tzinfo=dt.timezone.utc), None, False, "Shushrut")
+    assert "Pitch: Fresh store" in text and "Why it matters: Dealers face" in text and "Pitch: Fresh store" in html_out

@@ -987,14 +987,15 @@ def compose(sections: dict, local_now: dt.datetime, window_start: dt.datetime | 
                 impl = ""  # never print the same line twice in one email
             seen_impl.add(impl.lower())
             outlet = _outlet(story, tag)
+            label = "Pitch" if sec == "account_news" else "Why it matters"  # Sales signals carry the Tekion angle
             h.append(
                 '<p style="margin:0 0 14px;">' + (f"<strong>{html.escape(lead)}</strong> – " if lead else "") + html.escape(fact)
                 + f' (<a href="{html.escape(story["url"], quote=True)}" style="color:#0b5cad;">{html.escape(outlet)}</a>)'
-                + (f'<br><em style="color:#424a53;">Why it matters: {html.escape(impl)}</em>' if impl else "") + "</p>"
+                + (f'<br><em style="color:#424a53;">{label}: {html.escape(impl)}</em>' if impl else "") + "</p>"
             )
             t.append(f"- {lead + ' – ' if lead else ''}{fact} ({outlet}: {story['url']})")
             if impl:
-                t.append(f"   Why it matters: {impl}")
+                t.append(f"   {label}: {impl}")
             t.append("")
     h.append(footer_html)
     h.append(tail)
