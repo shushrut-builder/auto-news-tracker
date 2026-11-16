@@ -81,6 +81,20 @@
    "mode": "send",
    "recipients": 1,
    "status": "degraded"
+  },
+  {
+   "ai_errors": [
+    "stop_reason max_tokens"
+   ],
+   "at": "2026-11-16T04:28:46.126961+00:00",
+   "failed_sources": [
+    "khaleej-times"
+   ],
+   "items": 21,
+   "mode": "send",
+   "recipients": 1,
+   "status": "degraded",
+   "untagged": 2
   }
  ],
  "sent_items": []
