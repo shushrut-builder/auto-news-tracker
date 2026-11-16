@@ -342,17 +342,17 @@ def test_failed_ai_batch_is_split_then_left_out_not_keyword_tagged(monkeypatch):
 
     def fake_batch(client, rules, batch):
         calls.append((batch[0]["id"], len(batch)))
-        if batch[0]["id"] == "20":  # the first half of the second batch always fails
+        if batch[0]["id"] == "12":  # the first half of the second batch (12 stories each) always fails
             raise S.BatchFailed("forced")
         return {s["id"]: tag(companies=[{"name": "Lithia Motors", "role": "acquirer"}]) for s in batch}, []
 
     monkeypatch.setattr(S, "ai_tag_batch", fake_batch)
     tags, untagged, errors = S.classify(stories, RULES, CTX, client=object())
-    # batch 20-39 fails twice, then splits: 20-29 fails twice and is left out, 30-39 succeeds
-    assert untagged == 10 and errors == ["forced"] * 4
-    assert sum(t["tagged_by"] == "ai" for t in tags.values()) == 35
-    assert all(not tags[str(i)]["relevant"] and tags[str(i)]["tagged_by"] == "untagged" for i in range(20, 30))
-    assert ("30", 10) in calls
+    # batch 12-23 fails twice, then splits: 12-17 fails twice and is left out, 18-23 succeeds
+    assert untagged == 6 and errors == ["forced"] * 4
+    assert sum(t["tagged_by"] == "ai" for t in tags.values()) == 39
+    assert all(not tags[str(i)]["relevant"] and tags[str(i)]["tagged_by"] == "untagged" for i in range(12, 18))
+    assert ("18", 6) in calls
 
 
 def test_blog_posts_are_filtered():

@@ -768,7 +768,7 @@ def merge_same_story(stories: list[dict], tags: dict, window_hours: int = 48) ->
 
 
 def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -> tuple[dict, int, list[str]]:
-    """Tag each story once. Returns (tags, stories the AI couldn't tag, error messages).
+    """Tag each story once. Returns (tags, stories lost to failed AI batches, error messages).
     Without an AI key, keyword rules tag everything. With one, a failed batch is retried, then split in half and
     retried; anything still untagged (or naming a company the article doesn't contain) is left out of the email,
     because keyword rules can't tell old or off-topic articles from news."""
@@ -801,11 +801,12 @@ def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         for parts in pool.map(run, batches):
             for batch, result in parts:
-                got, rejected = result if result is not None else ({}, [s["id"] for s in batch])
+                failed = result is None
+                got, rejected = result if not failed else ({}, [s["id"] for s in batch])
                 tags.update(got)
+                untagged += len(rejected) if failed else 0
                 for s in batch:
                     if s["id"] in rejected:
-                        untagged += 1
                         tags[s["id"]] = dict(classify_rules(s, ctx), relevant=False, signal=None, tagged_by="untagged")
     return tags, untagged, errors
 

@@ -639,6 +639,6 @@ settings:
   retry_hours: 3
   ai:
     model: claude-haiku-5-5
-    batch_size: 20
-    max_tokens: 8000
+    batch_size: 12      # smaller batches leave room for every summary and pitch
+    max_tokens: 16000   # 8000 ran out on 20-story batches
     effort: low
