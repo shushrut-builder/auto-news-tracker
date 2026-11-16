@@ -621,7 +621,8 @@ Rules:
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one short sentence of at most 25 words, written the way a colleague would say it: plain everyday words, active voice, no jargon or filler ("announced", "is set to", "in a move to"). No opinion, no implication.
 - implication: one short line of at most 15 words, written like a quick note from a colleague who knows our products: natural, direct, no corporate filler.
-  - Sales signals (buyer is true and the signal is acquisition, closure, new_store, market_entry, competitor_selected, leadership_change or tech_investment): always write it. It is shown to the sales team as "Pitch", so it must read as one: the need this event creates for this company, then the product or module from the list above that meets it and what it does for them. Name the company or the change, and name the specific product or module. Good: "Three new stores on different systems; ARC runs all of them on one platform." / "Opening in Texas means a DMS, CRM and payments from scratch: ARC with Tekion Pay." / "New digital chief at Lithia; Digital Retail puts the whole car deal online." Bad (states the need but no product): "Three more stores to fold into one system." Bad (names a product but no reason): "ARC fits." Bad (stiff): "This development will require the dealership to establish its systems from the start." Product guide: a new store or market entry needs its DMS, CRM and payments set up (Automotive Retail Cloud: DMS, CRM, Tekion Pay); a group buying stores moves them onto one system and wants one view of them (Automotive Retail Cloud, Advanced Analytics); a carmaker building a dealer network or changing how it sells (Automotive Enterprise Cloud); a new head of digital or service (Digital Retail, Digital Service Experience); a dealer investing in technology (the module that matches what they are investing in, or Tekion AI Agents for AI); a closure (the buyer or remaining stores consolidating onto one system); a dealer choosing a competitor (the Tekion modules that compete with what they chose).
+  - Sales signals (buyer is true and the signal is acquisition, closure, new_store, market_entry, competitor_selected, leadership_change or tech_investment): always write it. It is shown to the sales team as "Pitch", so it must read as one: the need this event creates for this company, then the product or module from the list above that meets it and what it does for them. Name the company or the change, and name the specific product or module. Good: "Three new stores on different systems; ARC runs all of them on one platform." / "Opening in Texas means a DMS, CRM and payments from scratch: ARC with Tekion Pay." / "New digital chief at Lithia; Digital Retail puts the whole car deal online." Bad (states the need but no product): "Three more stores to fold into one system." Bad (names a product but no reason): "ARC fits." Bad (stiff): "This development will require the dealership to establish its systems from the start." Bad (hedged): "ARC can run all its stores." Pick the module most specific to this event rather than repeating "DMS, CRM and payments" on every new store (a service centre points to Digital Service Experience, a used-car or online push to Digital Retail, a big group to Advanced Analytics), and never write the same pitch twice in one batch. Product guide: a new store or market entry needs its DMS, CRM and payments set up (Automotive Retail Cloud: DMS, CRM, Tekion Pay); a group buying stores moves them onto one system and wants one view of them (Automotive Retail Cloud, Advanced Analytics); a carmaker building a dealer network or changing how it sells (Automotive Enterprise Cloud); a new head of digital or service (Digital Retail, Digital Service Experience); a dealer investing in technology (the module that matches what they are investing in, or Tekion AI Agents for AI); a closure (the buyer or remaining stores consolidating onto one system); a dealer choosing a competitor (the Tekion modules that compete with what they chose).
+  - Both: no hedges ("can", "may", "might", "could", "likely", "would", "typically", "potentially"); state it plainly.
   - Everything else: write it whenever you can say something specific about what this event means for the companies involved, and leave it empty when the line would be generic. Name a product only when the link to this event is direct. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "likely", "would", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Vary the wording from item to item.
 - confidence: 0 to 1, how clearly this is hot news: a specific, new event or fresh data point from the past few days, stated as fact, with the signal, companies and roles clear from the text. Use below 0.5 for general knowledge, explainers, how-to or advice pieces, opinion, predictions, evergreen features, or a rehash of known facts, and when the text is too thin to tell what happened.
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
@@ -766,37 +767,47 @@ def merge_same_story(stories: list[dict], tags: dict, window_hours: int = 48) ->
     return kept
 
 
-def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -> tuple[dict, int]:
-    """Tag each story once. AI per batch (retry once), keyword rules if a batch fails. Returns (tags, fallback batches)."""
+def classify(stories: list[dict], rules: dict, ctx: RulesContext, client=None) -> tuple[dict, int, list[str]]:
+    """Tag each story once. Returns (tags, stories the AI couldn't tag, error messages).
+    Without an AI key, keyword rules tag everything. With one, a failed batch is retried, then split in half and
+    retried; anything still untagged (or naming a company the article doesn't contain) is left out of the email,
+    because keyword rules can't tell old or off-topic articles from news."""
     for i, s in enumerate(stories):
         s["id"] = str(i)
-    tags: dict = {}
-    fallback = 0
     if not client:
-        tags = {s["id"]: classify_rules(s, ctx) for s in stories}
-    else:
-        size = rules["settings"]["ai"]["batch_size"]
-        batches = [stories[i:i + size] for i in range(0, len(stories), size)]
+        return {s["id"]: classify_rules(s, ctx) for s in stories}, 0, []
+    tags: dict = {}
+    errors: list[str] = []
 
-        def run(batch):
-            for attempt in range(2):
-                try:
-                    return ai_tag_batch(client, rules, batch), None
-                except BatchFailed as e:
-                    err = str(e)
-                    log(f"  AI batch failed (attempt {attempt + 1}): {err}")
-            return None, err
+    def attempt(batch):
+        for n in range(2):
+            try:
+                return ai_tag_batch(client, rules, batch)
+            except BatchFailed as e:
+                errors.append(str(e)[:200])
+                log(f"  AI batch of {len(batch)} failed (attempt {n + 1}): {e}")
+        return None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-            for batch, (result, _err) in zip(batches, pool.map(run, batches)):
-                if result is None:
-                    fallback += 1
-                    tags.update({s["id"]: classify_rules(s, ctx) for s in batch})
-                    continue
-                got, rejected = result
+    def run(batch):
+        result = attempt(batch)
+        if result is not None or len(batch) < 2:
+            return [(batch, result)]
+        half = len(batch) // 2
+        return [(b, attempt(b)) for b in (batch[:half], batch[half:])]
+
+    size = rules["settings"]["ai"]["batch_size"]
+    batches = [stories[i:i + size] for i in range(0, len(stories), size)]
+    untagged = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        for parts in pool.map(run, batches):
+            for batch, result in parts:
+                got, rejected = result if result is not None else ({}, [s["id"] for s in batch])
                 tags.update(got)
-                tags.update({s["id"]: classify_rules(s, ctx) for s in batch if s["id"] in rejected})
-    return tags, fallback
+                for s in batch:
+                    if s["id"] in rejected:
+                        untagged += 1
+                        tags[s["id"]] = dict(classify_rules(s, ctx), relevant=False, signal=None, tagged_by="untagged")
+    return tags, untagged, errors
 
 
 # ---------------------------------------------------------------- route and rank (design doc, section 4)
@@ -1074,10 +1085,10 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
     stories = drop_already_sent(dedupe(items, s["title_similarity"]), earlier, s["title_similarity"])
     log(f"Dedupe: {len(stories)} new stories")
     ctx = RulesContext(rules)
-    tags, fallback = classify(stories, rules, ctx, ai_client)
+    tags, untagged, ai_errors = classify(stories, rules, ctx, ai_client)
     stories = merge_same_story(stories, tags)
     relevant = [st for st in stories if tags[st["id"]]["relevant"]]
-    log(f"Tag: {len(relevant)} relevant ({'AI' if ai_client else 'keyword rules'}{f', {fallback} batch(es) fell back to rules' if fallback else ''})")
+    log(f"Tag: {len(relevant)} relevant ({'AI' if ai_client else 'keyword rules'}{f', {untagged} left out because the AI could not tag them' if untagged else ''})")
 
     candidates = []
     for st in relevant:
@@ -1085,13 +1096,13 @@ def build_report(cfg: dict, rules: dict, state: dict, now: dt.datetime, fetcher=
         if sec:
             candidates.append({"story": st, "tag": tags[st["id"]], "section": sec})
     sections = rank(candidates, rules)
-    degraded = len(ok) < 0.4 * attempted or fallback > 0
+    degraded = len(ok) < 0.4 * attempted or untagged > 0
     local_now = now.astimezone(ZoneInfo(cfg["timezone"]))
     subject, html_body, text_body = compose(sections, local_now, window_start if last else None, degraded, cfg.get("contact", ""))
     included = [c for sec in SECTIONS for c in sections[sec]]
     log(f"Email: {len(included)} items ({', '.join(f'{SECTION_TITLES[k]} {len(v)}' for k, v in sections.items() if v) or 'quiet day'})")
     return {"subject": subject, "html": html_body, "text": text_body, "included": included, "relevant": relevant, "tags": tags,
-            "degraded": degraded, "failed_sources": failed, "fallback_batches": fallback}
+            "degraded": degraded, "failed_sources": failed, "untagged": untagged, "ai_errors": ai_errors}
 
 
 def make_ai_client():
@@ -1100,7 +1111,7 @@ def make_ai_client():
         return None
     import anthropic
 
-    return anthropic.Anthropic(api_key=key, max_retries=0, timeout=45)
+    return anthropic.Anthropic(api_key=key, max_retries=2, timeout=90)  # SDK backs off on rate limits
 
 
 def load_dotenv(path: Path) -> None:
@@ -1165,7 +1176,8 @@ def main(argv=None, now: dt.datetime | None = None, fetcher=None, ai_client=None
                 st = c["story"]
                 state["sent_items"].append({"url": st["canonical"], "tokens": st["tokens"], "at": now.isoformat()})
         run.update(status="degraded" if report["degraded"] else "ok", items=len(report["included"]), recipients=len(recipients),
-                   failed_sources=[f["id"] for f in report["failed_sources"]])
+                   failed_sources=[f["id"] for f in report["failed_sources"]], untagged=report["untagged"],
+                   ai_errors=sorted(set(report["ai_errors"]))[:3])
         return 0
     except Exception as e:  # noqa: BLE001 - record, then fail the job so GitHub alerts the owner
         run.update(status="failed", error=str(e)[:300])

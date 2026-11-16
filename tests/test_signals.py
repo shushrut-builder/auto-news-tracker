@@ -336,22 +336,28 @@ def test_url_date_older_than_reported_date():
 
 # ---------------------------------------------------------------- AI fallback
 
-def test_ai_failure_falls_back_to_rules_for_that_batch_only(monkeypatch):
+def test_failed_ai_batch_is_split_then_left_out_not_keyword_tagged(monkeypatch):
     stories = [dict(_item(f"Lithia Motors acquires store number {i}", f"https://x.com/{i}"), publishers=set(), urls=set()) for i in range(45)]
     calls = []
 
     def fake_batch(client, rules, batch):
-        calls.append(batch[0]["id"])
-        if batch[0]["id"] == "20":
+        calls.append((batch[0]["id"], len(batch)))
+        if batch[0]["id"] == "20":  # the first half of the second batch always fails
             raise S.BatchFailed("forced")
         return {s["id"]: tag(companies=[{"name": "Lithia Motors", "role": "acquirer"}]) for s in batch}, []
 
     monkeypatch.setattr(S, "ai_tag_batch", fake_batch)
-    tags, fallback = S.classify(stories, RULES, CTX, client=object())
-    assert fallback == 1
-    assert len(calls) == 4  # three batches, the failing one retried once
-    assert sum(t["tagged_by"] == "rules" for t in tags.values()) == 20
-    assert sum(t["tagged_by"] == "ai" for t in tags.values()) == 25
+    tags, untagged, errors = S.classify(stories, RULES, CTX, client=object())
+    # batch 20-39 fails twice, then splits: 20-29 fails twice and is left out, 30-39 succeeds
+    assert untagged == 10 and errors == ["forced"] * 4
+    assert sum(t["tagged_by"] == "ai" for t in tags.values()) == 35
+    assert all(not tags[str(i)]["relevant"] and tags[str(i)]["tagged_by"] == "untagged" for i in range(20, 30))
+    assert ("30", 10) in calls
+
+
+def test_blog_posts_are_filtered():
+    kept, dropped = S.prefilter([_item("DealerUstaad: the all-in-one dealership platform", "https://dev.to/adeel/dealerustaad-1915")], RULES)
+    assert kept == [] and dropped == 1
 
 
 # ---------------------------------------------------------------- whole run (scheduling, sending, state)
@@ -519,6 +525,7 @@ def test_ai_refusal_counts_as_batch_failure():
 def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
     assert "Automotive Retail Cloud" in p and "Tekion Pay" in p and "Automotive Enterprise Cloud" in p
+    assert "Bad (hedged)" in p and "never write the same pitch twice" in p
     assert "Sales signals" in p and "always write it" in p and '"Pitch"' in p and "names a product but no reason" in p  # Sales signals always name the product that fits
     assert "at most 15 words" in p and "at most 25 words" in p and "Formal" not in p  # short, conversational
     assert "buyer:" in p and "trade and tariff negotiations" in p and "Routine hires below the C-suite" in p

@@ -417,6 +417,7 @@ prefilter:
     Cars|Renault|Jaguar Land Rover|JLR|Tata Motors|Mahindra|Maruti|Ashok Leyland|Hero MotoCorp|Bajaj Auto|TVS Motor|BYD|Geely|Chery|MG Motor|Al-Futtaim|Abdul Latif Jameel|Al Tayer|Juffali)\b'
   exclude_url:
   - 'newscast|roundup|round-up|week-in-review|podcast|webinar|/video/|/videos/'
+  - '//(www\.)?(dev\.to|medium\.com|[a-z0-9-]+\.medium\.com|linkedin\.com/pulse)/'   # blog posts and self-promotion, not news
 signals:
   oem_dms_certification:
     patterns:
