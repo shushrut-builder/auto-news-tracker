@@ -590,12 +590,12 @@ SIGNAL_DEFS = """Company signals (about a specific dealer group, dealer, distrib
 Brand signals (about a vehicle brand / OEM, affecting its dealers):
 - oem_dms_certification: an OEM certifies or approves a dealer management system (DMS) vendor for its dealers. Mark the certified vendor with role "certified".
 - oem_retail_strategy: an OEM changes how its vehicles are sold (agency model, direct sales, dealer network changes, dealer standards). Set direction: "falling" if the change reduces the role or number of dealers (direct sales, agency model, network cuts), "rising" if it expands it.
-- major_recall: a large vehicle recall.
-- sales_shift: a notable rise or fall in a whole market's vehicle sales, registrations or EV share (a country or segment, not one brand). One brand's own monthly sales release is relevant: false. Set direction.
-- launch: only a launch that changes how dealers sell or service: a new brand entering a market or choosing its dealers or sales channel, or a new EV line that needs new service tools or training. A routine model reveal, facelift, trim or concept car is relevant: false.
+- major_recall: a recall of 100,000 or more vehicles. Smaller recalls are relevant: false.
+- sales_shift: a notable rise or fall in vehicle sales, registrations, market share or EV share, for a market or a single brand (including a brand's monthly sales results). Set direction.
+- launch: a new model, EV or brand launch, or a launch date announced. Concept cars and car reviews are relevant: false.
 Market signals:
 - competitor_incident: an outage, cyberattack, breach, lawsuit or regulatory action involving a competing dealer software provider.
-- regulation: an actual new, proposed or court-ordered law, regulation, ruling or tariff affecting auto dealers or vehicle sales. Political statements, negotiations, speeches and positions without a concrete rule are relevant: false.
+- regulation: a new, proposed or court-ordered law, regulation, ruling or tariff affecting auto dealers or vehicle sales, or trade and tariff negotiations that name the auto sector (say in the summary that it is proposed or under negotiation). General political statements that are not about autos are relevant: false.
 - market_trend: industry-wide data or a study about auto retail: inventory levels, sales pace, used-vehicle prices, loan rates, dealer profitability, dealership deal volume or valuations, or a survey of how dealers use technology (AI, digital retail, cloud, cybersecurity). Not about one company.
 - vendor_news: other news about our company or a competing dealer software provider: a dealer or OEM choosing our company, product launches, partnerships, funding, acquisitions, pricing, layoffs, or a C-suite change or a new head of sales, product or engineering. Routine hires below the C-suite outside sales and product (HR, finance, marketing, regional roles) are relevant: false. Name the provider as a company with role "subject"."""
 
@@ -792,7 +792,7 @@ ROUTING = {
     "competitor_selected": "account_news", "leadership_change": "account_news", "tech_investment": "account_news",
     "oem_dms_certification": "industry_trends", "oem_retail_strategy": "industry_trends", "sales_shift": "industry_trends",
     "launch": "industry_trends", "regulation": "industry_trends", "market_trend": "industry_trends",
-    "major_recall": None,
+    "major_recall": "industry_trends",  # only recalls of 100,000+ vehicles (see the AI instructions)
     # About Tekion or a listed competitor -> Tekion / Competitors (see route). Other dealer software companies
     # (a voice-AI startup winning dealers, say) are a dealer-tech trend.
     "competitor_incident": "industry_trends", "vendor_news": "industry_trends",
@@ -882,10 +882,21 @@ def rank(candidates: list[dict], rules: dict) -> dict:
         region = c["tag"].get("region") or ""
         c["lead"] = " · ".join(x for x in (lead_name(c, rules), region if region != "Unknown" else "") if x)
         out[c["section"]].append(c)
+    account_signals = {sig for sig, sec in ROUTING.items() if sec == "account_news"}
     per_outlet: dict[str, int] = {}
     for sec in SECTIONS:
-        out[sec].sort(key=lambda c: (order.get(c["tag"]["signal"], len(order)),
-                                     c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
+        if sec == "industry_trends":
+            # Market trends before company news about non-buyers (an insurer buying a warranty firm); then the
+            # most widely covered story first; ties by trusted source, event type and recency.
+            out[sec].sort(key=lambda c: (c["tag"]["signal"] in account_signals, -c["story"]["outlets"], c["story"]["tier"],
+                                         order.get(c["tag"]["signal"], len(order)), -c["story"]["published"].timestamp()))
+            # Variety: the best story of each type first, then the rest in the same order.
+            seen_types: set[str] = set()
+            first = [c for c in out[sec] if not (c["tag"]["signal"] in seen_types or seen_types.add(c["tag"]["signal"]))]
+            out[sec] = first + [c for c in out[sec] if c not in first]
+        else:
+            out[sec].sort(key=lambda c: (order.get(c["tag"]["signal"], len(order)),
+                                         c["story"]["tier"], -c["story"]["outlets"], -c["story"]["published"].timestamp()))
         kept, types = [], set()
         for c in out[sec]:
             if sec == "industry_trends" and s.get("trends_one_per_type"):  # three launches can't fill the section

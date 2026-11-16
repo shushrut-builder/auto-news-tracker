@@ -224,7 +224,7 @@ def route(regions=None, **t):
     ("market_entry", "account_news"), ("leadership_change", "account_news"), ("tech_investment", "account_news"),
     ("oem_retail_strategy", "industry_trends"), ("regulation", "industry_trends"), ("market_trend", "industry_trends"),
     ("sales_shift", "industry_trends"), ("launch", "industry_trends"), ("oem_dms_certification", "industry_trends"),
-    ("major_recall", None),
+    ("major_recall", "industry_trends"),
     # Without us or a competitor named: news about other dealer software companies is a trend.
     ("competitor_incident", "industry_trends"), ("vendor_news", "industry_trends"),
 ])
@@ -276,7 +276,7 @@ LIMITED = {**RULES, "settings": {**RULES["settings"], "max_per_outlet": 2, "tren
 
 def test_limits_are_off_by_default():
     s = RULES["settings"]
-    assert not s.get("caps") and not s.get("max_per_outlet") and not s.get("trends_one_per_type") and s["sent_memory_days"] == 0
+    assert s["caps"] == {"industry_trends": 10} and not s.get("max_per_outlet") and not s.get("trends_one_per_type") and s["sent_memory_days"] == 0
     assert not s.get("hot_news_gate")  # no confidence filter
 
 
@@ -519,7 +519,8 @@ def test_ai_refusal_counts_as_batch_failure():
 def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
     assert "Automotive Retail Cloud" in p and "Leave it empty only when the line would be generic" in p
-    assert "buyer:" in p and "Political statements" in p and "Routine hires below the C-suite" in p
+    assert "buyer:" in p and "trade and tariff negotiations" in p and "Routine hires below the C-suite" in p
+    assert "100,000 or more vehicles" in p and "Concept cars and car reviews" in p
 
 
 def test_industry_trends_first_one_per_type_capped_and_gated():
@@ -574,3 +575,19 @@ def test_same_day_send_does_not_count_as_already_sent(tmp_path):
     # With the memory off (the current setting), they're sent again.
     assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=0) == 0
     assert "ACCOUNT NEWS" in box.sent[-1]["text"]
+
+
+def test_industry_trends_variety_then_coverage_capped_at_ten():
+    def trend(signal, outlets=1, host="t.com", tier=3):
+        c = _cand("industry_trends", 0.9, host=host, signal=signal, tier=tier)
+        c["story"]["outlets"] = outlets
+        return c
+    big_launch = trend("launch", outlets=8, host="a.com")
+    small_launch = trend("launch", outlets=1, host="b.com")
+    regulation = trend("regulation", outlets=2, host="c.com")
+    insurer_deal = trend("acquisition", outlets=5, host="d.com")  # company news about a non-buyer
+    out = S.rank([small_launch, insurer_deal, regulation, big_launch], RULES)["industry_trends"]
+    # One of each type first (most covered first), non-buyer company news after market trends, then the rest.
+    assert out == [big_launch, regulation, insurer_deal, small_launch]
+    many = [trend("launch", outlets=i, host=f"h{i}.com") for i in range(15)]
+    assert len(S.rank(many, RULES)["industry_trends"]) == 10

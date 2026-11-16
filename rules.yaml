@@ -627,10 +627,12 @@ settings:
   # Off for now: no story is dropped for a low confidence score. To turn it back on (0-1; below it a story
   # reads as general knowledge, an explainer or opinion rather than hot news):
   #   hot_news_gate: 0.6
-  # Optional limits, all off for now so every story is sent. To turn them back on:
+  # Industry trends is capped so the top of the email stays scannable (ranked by variety, then coverage).
+  # Other sections send every story. Optional limits, off for now:
   #   max_per_outlet: 2          # at most this many items from one publication per email
   #   trends_one_per_type: true  # at most one launch, one regulation item, etc. in Industry trends
-  #   caps: {industry_trends: 3, account_news: 8, competitors: 5, tekion: 3}
+  caps:
+    industry_trends: 10
   retry_hours: 3
   ai:
     model: claude-haiku-5-5
