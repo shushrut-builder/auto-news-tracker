@@ -6,7 +6,7 @@ recipients:
 
 # When the email goes out: local hour (0-23) in this timezone.
 send_hour: 8
-timezone: America/Chicago
+timezone: Asia/Kolkata   # the sales team is in India
 
 # Who the team contacts to share feedback (the email is no-reply).
 contact: Shushrut

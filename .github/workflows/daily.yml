@@ -2,9 +2,9 @@ name: Daily sales signals
 
 on:
   schedule:
-    # Every hour at :17 (UTC). The script sends only when it's send_hour in config.yaml's timezone,
-    # once per day, so time and daylight-saving changes need no edit here.
-    - cron: "17 * * * *"
+    # Every hour at :30 (UTC), which is on the hour in India (UTC+5:30), so the 8 AM IST run starts at 02:30 UTC.
+    # The script sends only when it's send_hour in config.yaml's timezone, once per day.
+    - cron: "30 * * * *"
   workflow_dispatch:
     inputs:
       mode:
