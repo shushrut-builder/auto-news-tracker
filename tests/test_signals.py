@@ -520,6 +520,7 @@ def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
     assert "Automotive Retail Cloud" in p and "Tekion Pay" in p and "Automotive Enterprise Cloud" in p
     assert "Sales signals" in p and "always write it" in p  # Sales signals always name the product that fits
+    assert "at most 15 words" in p and "at most 25 words" in p and "Formal" not in p  # short, conversational
     assert "buyer:" in p and "trade and tariff negotiations" in p and "Routine hires below the C-suite" in p
     assert "100,000 or more vehicles" in p and "Concept cars and car reviews" in p
 
