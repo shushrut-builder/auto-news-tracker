@@ -433,7 +433,7 @@ def test_preview_sends_nothing_and_writes_files(tmp_path):
     html_out = (tmp_path / "out" / "preview.html").read_text(encoding="utf-8")
     text_out = (tmp_path / "out" / "preview.txt").read_text(encoding="utf-8")
     assert "Hi Team," in html_out and text_out.startswith("Subject: Automotive market update – ")
-    assert "Here's what happened in the automotive world in the last 24 hours." in text_out and "ACCOUNT NEWS" in text_out
+    assert "Here's what happened in the automotive world in the last 24 hours." in text_out and "SALES SIGNALS" in text_out
     assert not (tmp_path / "sent.json").exists()  # previews don't touch state
 
 
@@ -450,7 +450,7 @@ def test_email_format(tmp_path):
     mail = box.sent[0]
     assert mail["subject"].startswith("Automotive market update – ")
     assert mail["text"].startswith("Hi Team,\n\nHere's what happened in the automotive world in the last 24 hours.")
-    assert "ACCOUNT NEWS" in mail["text"]
+    assert "SALES SIGNALS" in mail["text"]
     assert "Why it matters" not in mail["text"]  # keyword rules never add a stock line
     assert "This is an automated email, so replies aren’t read. To share feedback, message Shushrut" in mail["text"] and "message Shushrut on Slack or by email" in mail["text"]
     assert " should " not in mail["text"].lower()
@@ -518,7 +518,8 @@ def test_ai_refusal_counts_as_batch_failure():
 
 def test_prompt_offers_products_but_keeps_why_it_matters_optional():
     p = S.system_prompt(RULES)
-    assert "Automotive Retail Cloud" in p and "Leave it empty only when the line would be generic" in p
+    assert "Automotive Retail Cloud" in p and "Tekion Pay" in p and "Automotive Enterprise Cloud" in p
+    assert "Sales signals" in p and "always write it" in p  # Sales signals always name the product that fits
     assert "buyer:" in p and "trade and tariff negotiations" in p and "Routine hires below the C-suite" in p
     assert "100,000 or more vehicles" in p and "Concept cars and car reviews" in p
 
@@ -564,17 +565,17 @@ def test_same_day_send_does_not_count_as_already_sent(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8"))["sent_items"]
     # A second send the same day (send-now to the team) still has today's stories.
     assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=14) == 0
-    assert "ACCOUNT NEWS" in box.sent[-1]["text"]
+    assert "SALES SIGNALS" in box.sent[-1]["text"]
     # Stories sent on an earlier day are still left out.
     state = json.loads(path.read_text(encoding="utf-8"))
     for x in state["sent_items"]:
         x["at"] = (dt.datetime.fromisoformat(x["at"]) - dt.timedelta(days=1)).isoformat()
     path.write_text(json.dumps(state), encoding="utf-8")
     assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=14) == 0
-    assert "ACCOUNT NEWS" not in box.sent[-1]["text"]
+    assert "SALES SIGNALS" not in box.sent[-1]["text"]
     # With the memory off (the current setting), they're sent again.
     assert _run(tmp_path, _at_local(8), box, "--send-now", memory_days=0) == 0
-    assert "ACCOUNT NEWS" in box.sent[-1]["text"]
+    assert "SALES SIGNALS" in box.sent[-1]["text"]
 
 
 def test_industry_trends_variety_then_coverage_capped_at_ten():

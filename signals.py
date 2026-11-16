@@ -38,10 +38,10 @@ ROOT = Path(__file__).resolve().parent
 USER_AGENT = "auto-sales-signals/1.0"
 
 # The email has four sections, in this order: market-wide developments (Industry trends), news about dealers,
-# groups and carmakers the team could sell to (Account news), news about competing dealer software providers
+# groups and carmakers the team could sell to (Sales signals), news about competing dealer software providers
 # (Competitors), and news about us (Tekion). Each item is labelled company · region.
 SECTIONS = ["industry_trends", "account_news", "competitors", "tekion"]
-SECTION_TITLES = {"industry_trends": "Industry trends", "account_news": "Account news",
+SECTION_TITLES = {"industry_trends": "Industry trends", "account_news": "Sales signals",
                   "competitors": "Competitors", "tekion": "Tekion"}
 # Regions a team can cover (config.yaml `regions`). The AI tags each story with one of these, or Global / Unknown.
 REGIONS = ["North America", "Europe", "India", "Middle East", "Asia Pacific", "Latin America", "Africa"]
@@ -620,7 +620,9 @@ Rules:
 - Extract only companies and brands that are named in the title or snippet. Use the name as written. Never infer or add names.
 - companies are businesses (dealer groups, dealers, OEMs as corporate actors, vendors). brands are vehicle brands. An OEM can appear in both.
 - summary: the fact only, in one plain sentence of at most 35 words. No opinion, no implication.
-- implication: write it whenever you can say something specific about what this event means for the companies involved (for example, a new store needs its systems set up, a new owner usually consolidates systems, a new brand is building a dealer network). Leave it empty only when the line would be generic. When you write it, use one sentence of at most 30 words on what this event means for the companies involved. It may name which of our products fits the situation, but only when the link to this event is direct (for example, a group buying stores and moving them onto one system); never add a product mention just to have one. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
+- implication: one sentence of at most 30 words.
+  - Sales signals (buyer is true and the signal is acquisition, closure, new_store, market_entry, competitor_selected, leadership_change or tech_investment): always write it, and say which of our products fits this event and why, naming the specific product or module from the list above. Examples: a new store needs its DMS, CRM and payments set up (Automotive Retail Cloud: DMS, CRM, Tekion Pay); a group buying stores moves them onto one system (Automotive Retail Cloud, Advanced Analytics); a carmaker building a dealer network or changing how it sells (Automotive Enterprise Cloud); a new head of digital or service (Digital Retail, Digital Service Experience); a dealer choosing a competitor (the Tekion modules that compete with what they chose).
+  - Everything else: write it whenever you can say something specific about what this event means for the companies involved, and leave it empty when the line would be generic. Name a product only when the link to this event is direct. Make it concrete to this story (name the company or the change); no generic line that would fit any story of this type, and never the same sentence for two items. Do not hedge with "can", "may", "might", "could", "typically" or "potentially". Never say when or how to act. Never use the words "should", "reach out", "contact", "opportunity to". Formal, plain language.
 - confidence: 0 to 1, how clearly this is hot news: a specific, new event or fresh data point from the past few days, stated as fact, with the signal, companies and roles clear from the text. Use below 0.5 for general knowledge, explainers, how-to or advice pieces, opinion, predictions, evergreen features, or a rehash of known facts, and when the text is too thin to tell what happened.
 - direction: "rising" or "falling" for sales_shift and oem_retail_strategy, otherwise null.
 - region: where the event happens: one of North America, Europe (including the UK), India, Middle East, Asia Pacific (including China, Japan, Korea, Southeast Asia, Australia), Latin America, Africa; "Global" if it spans regions; "Unknown" if the text doesn't say.
@@ -839,8 +841,8 @@ def in_regions(tag: dict, regions: list[str] | None) -> bool:
 def route(tag: dict, rules: dict, regions: list[str] | None = None) -> str | None:
     """Section for a tagged story, or None to leave it out.
     - About Tekion -> Tekion; about a competing provider -> Competitors. From any region.
-    - A dealer choosing a competitor -> Account news, labelled with the dealer (it needs a named dealer).
-    - Account news is for businesses that would buy dealer software (buyer). The same kind of news about any
+    - A dealer choosing a competitor -> Sales signals, labelled with the dealer (it needs a named dealer).
+    - Sales signals are for businesses that would buy dealer software (buyer). The same kind of news about any
       other business (an insurer buying a warranty company, a tech startup raising money) goes to Industry trends.
     - Industry trends: market-wide developments in the team's regions."""
     if not tag["relevant"] or not tag["signal"]:

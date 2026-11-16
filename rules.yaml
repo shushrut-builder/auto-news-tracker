@@ -10,11 +10,12 @@ us:
   aliases:
   - Tekion Corp
   - Tekion ARC
-  # Used in "Why it matters" only when a story points straight at one of these. Edit to match current offerings.
+  # From tekion.com's product menu. "Why it matters" on Sales signals names the product that fits each event.
   products:
-  - 'Automotive Retail Cloud (ARC): one cloud platform for dealers covering DMS, CRM, digital retail, service and accounting'
-  - 'Automotive Enterprise Cloud (AEC): for carmakers and distributors running their retail network'
-  - 'Automotive Partner Cloud (APC): integrations with third-party dealer tools'
+  - 'Automotive Retail Cloud (ARC), for dealers and retailers, with modules: DMS, CRM, Advanced Analytics, Digital Retail, Digital Service Experience, Tekion Pay, Tekion Payroll, Virtual-to-Visit Experiences, Tekion Spend'
+  - 'Automotive Enterprise Cloud (AEC), for manufacturers and enterprises'
+  - 'Automotive Partner Cloud (APC), for technology partners'
+  - 'Tekion AI Agents'
 competitors:   # dealer software providers that compete with us (DMS, CRM, service)
 - name: CDK Global
   aliases:
