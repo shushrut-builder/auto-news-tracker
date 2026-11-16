@@ -16,12 +16,12 @@ Four sections, in order: **Industry trends**, **Sales signals**, **Competitors**
 ## How it works
 
 1. **Collect** from 55 free public sources: trade-press RSS, Google News searches, Exa web searches and NHTSA recalls.
-2. **Filter junk** such as reviews, motorsport, bikes and blogs, using fixed rules.
-3. **Drop copies:** the same link, or the same headline from another outlet.
-4. **AI reads each story** (Claude Haiku 5.5). It gives the type, companies, region, summary and pitch.
-5. **Code checks the AI:** the company names must appear in the article, and the story must be current and on topic.
-6. **Join retellings** of the same event, then **sort** the stories into sections with fixed rules.
-7. **Build and send** from a template, then log the run in `sent.json`.
+2. **Normalize and filter noise:** clean titles and URLs, then drop reviews, motorsport, bikes and blogs with fixed rules.
+3. **Deduplicate:** the same URL, or a near-identical headline from another outlet.
+4. **AI classification** (Claude Haiku 5.5): signal type, companies, region, summary and pitch.
+5. **Validate AI output:** the company names must appear in the article, and the story must be current and on topic.
+6. **Event-level dedupe** (same signal and companies, different headlines), then **route and rank** into sections with fixed rules.
+7. **Compose and send** from a template over SMTP, then log the run in `sent.json`.
 
 AI is used only in step 4. If it can't read a story, the story is left out rather than guessed at, and the email says coverage was partial.
 
@@ -51,4 +51,4 @@ The full steps are in [docs/setup-and-execution.md](docs/setup-and-execution.md)
 | `signals.py` | The whole workflow, in one file |
 | `.github/workflows/daily.yml` | The hourly schedule |
 | `sent.json` | Run log, which also stops a second email on the same day |
-| `tests/` | 57 tests. They use no network and send no email |
+| `tests/` | 59 tests. They use no network and send no email |

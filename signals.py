@@ -1041,6 +1041,29 @@ def send_email(recipients: list[str], subject: str, html_body: str, text_body: s
             s.send_message(msg)
 
 
+def _pause(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def send_with_retry(sender, recipients: list[str], report: dict, settings: dict) -> None:
+    """Retry a failed send straight away (after a short pause), so a brief SMTP or network hiccup
+    doesn't cost the 8 AM email. A wrong login won't fix itself, so it isn't retried. If every
+    attempt fails, the error goes up and the next hourly run is the backup."""
+    attempts = settings.get("send_attempts", 3)
+    wait = settings.get("send_retry_seconds", 30)
+    for n in range(1, attempts + 1):
+        try:
+            sender(recipients, report["subject"], report["html"], report["text"])
+            return
+        except smtplib.SMTPAuthenticationError:
+            raise
+        except (smtplib.SMTPException, OSError) as e:
+            if n == attempts:
+                raise
+            log(f"Send failed (attempt {n} of {attempts}): {e}. Retrying in {wait}s.")
+            _pause(wait)
+
+
 # ---------------------------------------------------------------- state (sent.json)
 
 def load_state(path: Path) -> dict:
@@ -1168,7 +1191,7 @@ def main(argv=None, now: dt.datetime | None = None, fetcher=None, ai_client=None
             log(f"Preview written to {out / 'preview.html'} and preview.txt. Nothing was sent.")
             return 0
         recipients = [args.to] if args.to else cfg["recipients"]
-        sender(recipients, report["subject"], report["html"], report["text"])
+        send_with_retry(sender, recipients, report, rules["settings"])
         log(f"Sent to {', '.join(recipients)}.")
         if not args.to:  # a test copy doesn't count as today's email
             state["last_sent_date"] = today

@@ -636,7 +636,9 @@ settings:
   #   trends_one_per_type: true  # at most one launch, one regulation item, etc. in Industry trends
   caps:
     industry_trends: 10
-  retry_hours: 3
+  send_attempts: 3          # a failed send is retried straight away, up to 3 tries in one run
+  send_retry_seconds: 30
+  retry_hours: 3            # backup: if all tries fail, the next hourly runs try again until send_hour + 3
   ai:
     model: claude-haiku-5-5
     batch_size: 12      # smaller batches leave room for every summary and pitch

@@ -13,7 +13,7 @@ The report runs on GitHub Actions, so there's no server to look after. Setup tak
 
 **Setting up Brevo** (what this build uses):
 1. Sign up at brevo.com.
-2. Add and verify the address the email should come from (**Senders, domains and dedicated IPs → Senders**). This is your `MAIL_FROM`.
+2. Add and verify the address the email should come from, in Brevo's **Senders** settings. This is your `MAIL_FROM`.
 3. Open **SMTP & API → SMTP**. Note the **SMTP login** (this is `SMTP_USER`) and generate an **SMTP key** (this is `SMTP_PASS`).
 4. The server is `smtp-relay.brevo.com`, port `587`.
 
@@ -130,9 +130,9 @@ python -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` instead. All 57 tests should pass. They use no network and send no email.
+On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` instead. All 59 tests should pass. They use no network and send no email.
 
-**b. The full run, without sending.** On GitHub: **Actions → Daily sales signals → Run workflow**, set mode to `preview`, click **Run workflow**. When it finishes (2 to 4 minutes), open the run and download the **email-preview** artifact. It holds the email exactly as it would go out. This proves the sources and the Claude key work.
+**b. The full run, without sending.** On GitHub: **Actions → Daily sales signals → Run workflow**, set mode to `preview`, click **Run workflow**. When it finishes (a few minutes), open the run and download the **email-preview** artifact. It holds the email exactly as it would go out. This proves the sources and the Claude key work.
 
 **c. The email.** Run the workflow again with mode `send-now` and your own address in **to**. Only you get it, and it doesn't count as the day's email. This proves the email settings work. If it doesn't arrive, check spam, then the run's log for the error.
 
@@ -140,7 +140,7 @@ On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` instead. All 57 t
 
 ## 6. Run it
 
-**Automatically.** Nothing more to do. GitHub starts the job every hour. It sends once a day at `send_hour` in your timezone and does nothing on the other runs. If a run fails or GitHub starts it late, the next hourly runs try again for up to 3 hours.
+**Automatically.** Nothing more to do. GitHub starts the job every hour. It sends once a day at `send_hour` in your timezone and does nothing on the other runs. If sending fails, it retries immediately, up to 3 tries. If all 3 fail, the next two hourly runs are the backup (with `send_hour: 8`, at 9 and 10 AM).
 
 **By hand.** **Actions → Daily sales signals → Run workflow**, mode `send-now`, **to** left empty. It sends to everyone in `config.yaml` straight away.
 

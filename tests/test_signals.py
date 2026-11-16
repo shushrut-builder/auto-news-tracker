@@ -30,6 +30,7 @@ def no_real_smtp(monkeypatch):
 
     monkeypatch.setattr(S.smtplib, "SMTP", boom)
     monkeypatch.setattr(S.smtplib, "SMTP_SSL", boom)
+    monkeypatch.setattr(S, "_pause", lambda s: None)  # no real waiting between send retries
 
 
 def fixture_rules():
@@ -383,7 +384,7 @@ class Outbox:
     def __call__(self, recipients, subject, html_body, text_body):
         self.attempts += 1
         if self.attempts <= self.fail_times:
-            raise RuntimeError("SMTP down (test)")
+            raise OSError("SMTP down (test)")
         self.sent.append({"to": recipients, "subject": subject, "html": html_body, "text": text_body})
 
 
@@ -417,19 +418,35 @@ def test_sends_once_per_day(tmp_path):
     assert state["last_sent_date"] and state["runs"][-1]["status"] in ("ok", "degraded")
 
 
-def test_failed_send_retries_then_stops(tmp_path):
+def test_failed_send_is_retried_immediately(tmp_path):
     box = Outbox(fail_times=2)
+    assert _run(tmp_path, _at_local(8), box) == 0  # third try in the same run succeeds
+    assert box.attempts == 3 and len(box.sent) == 1
+
+
+def test_if_every_immediate_retry_fails_the_next_hourly_run_is_the_backup(tmp_path):
+    box = Outbox(fail_times=3)
     at8 = _at_local(8)
-    assert _run(tmp_path, at8, box) == 1  # fails → job fails → GitHub alerts the owner
-    assert _run(tmp_path, at8 + dt.timedelta(hours=1), box) == 1
-    assert _run(tmp_path, at8 + dt.timedelta(hours=2), box) == 0  # 10:17, succeeds
-    assert len(box.sent) == 1
+    assert _run(tmp_path, at8, box) == 1  # 3 tries fail → job fails → GitHub alerts the owner
+    assert _run(tmp_path, at8 + dt.timedelta(hours=1), box) == 0  # 9:17 backup succeeds
+    assert box.attempts == 4 and len(box.sent) == 1
     box2 = Outbox(fail_times=99)
     p = tmp_path / "late"
     p.mkdir()
     _run(p, at8, box2)
-    _run(p, at8 + dt.timedelta(hours=3), box2)  # 11:17: outside the retry window
-    assert box2.attempts == 1
+    _run(p, at8 + dt.timedelta(hours=3), box2)  # 11:17: outside the backup window
+    assert box2.attempts == 3
+
+
+def test_wrong_smtp_login_is_not_retried(tmp_path):
+    calls = []
+
+    def bad_login(*a):
+        calls.append(1)
+        raise S.smtplib.SMTPAuthenticationError(535, b"bad credentials")
+
+    assert _run(tmp_path, _at_local(8), bad_login) == 1
+    assert len(calls) == 1
 
 
 def test_preview_sends_nothing_and_writes_files(tmp_path):
