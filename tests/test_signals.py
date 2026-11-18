@@ -449,6 +449,31 @@ def test_wrong_smtp_login_is_not_retried(tmp_path):
     assert len(calls) == 1
 
 
+def test_permanent_smtp_rejection_is_not_retried(tmp_path):
+    calls = []
+
+    def not_activated(*a):
+        calls.append(1)
+        raise S.smtplib.SMTPSenderRefused(502, b"5.7.0 Your SMTP account is not yet activated", "bot@example.com")
+
+    assert _run(tmp_path, _at_local(8), not_activated) == 1
+    assert len(calls) == 1
+    state = json.loads((tmp_path / "sent.json").read_text(encoding="utf-8"))
+    assert "not yet activated" in state["runs"][-1]["error"]
+
+
+def test_temporary_smtp_reply_is_retried(tmp_path):
+    calls = []
+
+    def busy_then_ok(*a):
+        calls.append(1)
+        if len(calls) == 1:
+            raise S.smtplib.SMTPResponseException(421, b"4.7.0 Try again later")
+
+    assert _run(tmp_path, _at_local(8), busy_then_ok) == 0
+    assert len(calls) == 2
+
+
 def test_preview_sends_nothing_and_writes_files(tmp_path):
     box = Outbox()
     assert _run(tmp_path, fixture_now(), box, "--preview") == 0

@@ -130,7 +130,7 @@ python -m venv .venv
 .venv/bin/python -m pytest
 ```
 
-On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` instead. All 59 tests should pass. They use no network and send no email.
+On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` instead. All 61 tests should pass. They use no network and send no email.
 
 **b. The full run, without sending.** On GitHub: **Actions → Daily sales signals → Run workflow**, set mode to `preview`, click **Run workflow**. When it finishes (a few minutes), open the run and download the **email-preview** artifact. It holds the email exactly as it would go out. This proves the sources and the Claude key work.
 

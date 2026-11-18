@@ -1047,16 +1047,21 @@ def _pause(seconds: float) -> None:
 
 def send_with_retry(sender, recipients: list[str], report: dict, settings: dict) -> None:
     """Retry a failed send straight away (after a short pause), so a brief SMTP or network hiccup
-    doesn't cost the 8 AM email. A wrong login won't fix itself, so it isn't retried. If every
-    attempt fails, the error goes up and the next hourly run is the backup."""
+    doesn't cost the 8 AM email. A permanent rejection (any 5xx reply: a wrong login, an account
+    the provider hasn't activated, a blocked sender) won't fix itself in 30 seconds, so it isn't
+    retried; 4xx replies and network errors are. If every attempt fails, the error goes up and
+    the next hourly run is the backup."""
     attempts = settings.get("send_attempts", 3)
     wait = settings.get("send_retry_seconds", 30)
     for n in range(1, attempts + 1):
         try:
             sender(recipients, report["subject"], report["html"], report["text"])
             return
-        except smtplib.SMTPAuthenticationError:
-            raise
+        except smtplib.SMTPResponseException as e:
+            if e.smtp_code >= 500 or n == attempts:
+                raise
+            log(f"Send failed (attempt {n} of {attempts}): {e}. Retrying in {wait}s.")
+            _pause(wait)
         except (smtplib.SMTPException, OSError) as e:
             if n == attempts:
                 raise

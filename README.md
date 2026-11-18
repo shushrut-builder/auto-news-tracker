@@ -51,4 +51,4 @@ The full steps are in [docs/setup-and-execution.md](docs/setup-and-execution.md)
 | `signals.py` | The whole workflow, in one file |
 | `.github/workflows/daily.yml` | The hourly schedule |
 | `sent.json` | Run log, which also stops a second email on the same day |
-| `tests/` | 59 tests. They use no network and send no email |
+| `tests/` | 61 tests. They use no network and send no email |
