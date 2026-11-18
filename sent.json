@@ -157,6 +157,12 @@
    "error": "(502, b'5.7.0 Your SMTP account is not yet activated. Please contact us at contact@sendinblue.com to request activation.')",
    "mode": "send",
    "status": "failed"
+  },
+  {
+   "at": "2026-11-18T06:04:41.678300+00:00",
+   "error": "(502, b'5.7.0 Your SMTP account is not yet activated. Please contact us at contact@sendinblue.com to request activation.')",
+   "mode": "send",
+   "status": "failed"
   }
  ],
  "sent_items": []
