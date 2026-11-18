@@ -163,6 +163,18 @@
    "error": "(502, b'5.7.0 Your SMTP account is not yet activated. Please contact us at contact@sendinblue.com to request activation.')",
    "mode": "send",
    "status": "failed"
+  },
+  {
+   "ai_errors": [],
+   "at": "2026-11-18T06:14:43.578717+00:00",
+   "failed_sources": [
+    "khaleej-times"
+   ],
+   "items": 32,
+   "mode": "send",
+   "recipients": 1,
+   "status": "ok",
+   "untagged": 0
   }
  ],
  "sent_items": []
