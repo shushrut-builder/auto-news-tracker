@@ -175,6 +175,12 @@
    "recipients": 1,
    "status": "ok",
    "untagged": 0
+  },
+  {
+   "at": "2026-11-22T02:32:35.496342+00:00",
+   "error": "(550, b'Invalid `to` field. Please use our testing email address instead of domains like `example.com`. See our documentation for more information.')",
+   "mode": "send",
+   "status": "failed"
   }
  ],
  "sent_items": []
